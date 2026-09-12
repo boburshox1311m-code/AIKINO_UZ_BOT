@@ -93,7 +93,11 @@ async def send_episode_message(message: Message, db: Database, episode_id: int):
         return False
     caption = ep["caption"] or f"{ep['movie_emoji']} <b>{ep['movie_title']}</b> — {ep['episode_number']}-QISM"
     await message.answer_video(
-        ep["file_id"], caption=caption, reply_markup=await episode_markup(db, ep), supports_streaming=True
+        ep["file_id"],
+        caption=caption,
+        reply_markup=await episode_markup(db, ep),
+        supports_streaming=True,
+        protect_content=True,
     )
     return True
 
