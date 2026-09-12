@@ -4,8 +4,8 @@ import math
 import re
 
 import asyncpg
-from aiogram import F, Router
-from aiogram.exceptions import TelegramBadRequest
+from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -71,9 +71,43 @@ def is_admin(user_id: int, admin_id: int):
     return user_id == admin_id
 
 
+async def episode_markup(db: Database, ep):
+    prev_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "prev")
+    next_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "next")
+    rows = []
+    nav = []
+    if prev_ep:
+        nav.append(InlineKeyboardButton(text="⬅️ Oldingi qism", callback_data=f"ep:{prev_ep['id']}"))
+    if next_ep:
+        nav.append(InlineKeyboardButton(text="Keyingi qism ➡️", callback_data=f"ep:{next_ep['id']}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🎬 Barcha qismlar", callback_data=f"movie:{ep['movie_id']}")])
+    rows.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def send_episode_message(message: Message, db: Database, episode_id: int):
+    ep = await db.episode(episode_id)
+    if not ep or not ep["file_id"]:
+        return False
+    caption = ep["caption"] or f"{ep['movie_emoji']} <b>{ep['movie_title']}</b> — {ep['episode_number']}-QISM"
+    await message.answer_video(
+        ep["file_id"], caption=caption, reply_markup=await episode_markup(db, ep), supports_streaming=True
+    )
+    return True
+
+
 @router.message(CommandStart())
-async def start(message: Message, state: FSMContext, admin_id: int):
+async def start(message: Message, state: FSMContext, admin_id: int, db: Database):
     await state.clear()
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) == 2 and parts[1].startswith("ep_"):
+        try:
+            if await send_episode_message(message, db, int(parts[1][3:])):
+                return
+        except ValueError:
+            pass
     await message.answer(
         "🎬 <b>AIKINO_UZ botiga xush kelibsiz!</b>\n\nSevimli kino va seriallaringizni tanlang:",
         reply_markup=main_menu(is_admin(message.from_user.id, admin_id)),
@@ -164,20 +198,7 @@ async def send_episode(call: CallbackQuery, db: Database):
     ep = await db.episode(int(call.data.split(":")[1]))
     if not ep or not ep["file_id"]:
         return await call.answer("Video topilmadi.", show_alert=True)
-    prev_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "prev")
-    next_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "next")
-    rows = []
-    nav = []
-    if prev_ep:
-        nav.append(InlineKeyboardButton(text="⬅️ Oldingi qism", callback_data=f"ep:{prev_ep['id']}"))
-    if next_ep:
-        nav.append(InlineKeyboardButton(text="Keyingi qism ➡️", callback_data=f"ep:{next_ep['id']}"))
-    if nav:
-        rows.append(nav)
-    rows.append([InlineKeyboardButton(text="🎬 Barcha qismlar", callback_data=f"movie:{ep['movie_id']}")])
-    rows.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")])
-    caption = ep["caption"] or f"{ep['movie_emoji']} <b>{ep['movie_title']}</b> — {ep['episode_number']}-QISM"
-    await call.message.answer_video(ep["file_id"], caption=caption, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), supports_streaming=True)
+    await send_episode_message(call.message, db, ep["id"])
     await call.answer()
 
 
@@ -289,12 +310,34 @@ async def add_ep_wait_video(message: Message, state: FSMContext, db: Database, a
 
 
 @router.message(AdminFlow.episode_video, F.video)
-async def add_ep_video(message: Message, state: FSMContext, db: Database, admin_id: int):
+async def add_ep_video(
+    message: Message, state: FSMContext, db: Database, admin_id: int, bot: Bot, channel_id: str | None
+):
     if not is_admin(message.from_user.id, admin_id): return
     data = await state.get_data()
     await db.set_episode_video(data["episode_id"], message.video.file_id, message.video.file_unique_id)
     await state.clear()
     await message.answer(f"✅ {data['episode_number']}-QISM videosi saqlandi va foydalanuvchilarga ochildi.", reply_markup=admin_menu())
+    if channel_id:
+        ep = await db.episode(data["episode_id"])
+        me = await bot.get_me()
+        announcement = (
+            f"🔥 <b>YANGI QISM!</b>\n\n"
+            f"{ep['movie_emoji']} <b>{ep['movie_title']}</b> — {ep['episode_number']}-QISM\n\n"
+            "🎬 Tomosha qilish uchun pastdagi tugmani bosing."
+        )
+        button = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🎬 Tomosha qilish", url=f"https://t.me/{me.username}?start=ep_{ep['id']}"
+            )
+        ]])
+        try:
+            await bot.send_message(channel_id, announcement, reply_markup=button)
+        except (TelegramBadRequest, TelegramForbiddenError) as exc:
+            await message.answer(
+                "⚠️ Qism saqlandi, lekin kanalga e’lon yuborilmadi. "
+                "Botni kanalga <b>Post Messages</b> huquqi bilan admin qiling."
+            )
 
 
 @router.message(AdminFlow.episode_video)
@@ -483,4 +526,3 @@ async def do_delete_ep(call: CallbackQuery, db: Database):
 @router.message()
 async def fallback(message: Message, admin_id: int):
     await message.answer("Kerakli bo‘limni tugmalar orqali tanlang:", reply_markup=main_menu(is_admin(message.from_user.id, admin_id)))
-

@@ -14,6 +14,7 @@ async def main() -> None:
     token = os.environ.get("BOT_TOKEN")
     database_url = os.environ.get("DATABASE_URL")
     admin_id = os.environ.get("ADMIN_ID")
+    channel_id = os.environ.get("CHANNEL_ID")
     if not token or not database_url or not admin_id:
         raise RuntimeError("BOT_TOKEN, DATABASE_URL va ADMIN_ID environment variable bo‘lishi shart")
 
@@ -26,6 +27,7 @@ async def main() -> None:
     dp = Dispatcher()
     dp["db"] = db
     dp["admin_id"] = int(admin_id)
+    dp["channel_id"] = channel_id
     dp.include_router(router)
     try:
         await bot.delete_webhook(drop_pending_updates=False)
@@ -37,4 +39,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
