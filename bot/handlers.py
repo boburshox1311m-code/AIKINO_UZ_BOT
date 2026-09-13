@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import math
 import re
+import logging
+from typing import Any, Awaitable, Callable
 
 import asyncpg
-from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram import BaseMiddleware, Bot, F, Router
+from aiogram.enums import ChatMemberStatus
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -17,6 +20,76 @@ from .database import Database
 router = Router()
 PAGE_MOVIES = 8
 PAGE_EPISODES = 10
+
+
+def subscription_kb(channel_id: str, target: str = "home"):
+    username = channel_id.lstrip("@")
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 Kanalga obuna bo‘lish", url=f"https://t.me/{username}")],
+        [InlineKeyboardButton(text="✅ Obunani tekshirish", callback_data=f"subcheck:{target}")],
+    ])
+
+
+async def is_channel_member(bot: Bot, channel_id: str | None, user_id: int) -> bool:
+    if not channel_id:
+        return True
+    try:
+        member = await bot.get_chat_member(channel_id, user_id)
+    except TelegramAPIError:
+        logging.getLogger(__name__).exception("Kanal obunasini tekshirib bo‘lmadi")
+        return True
+    if member.status in {
+        ChatMemberStatus.CREATOR,
+        ChatMemberStatus.ADMINISTRATOR,
+        ChatMemberStatus.MEMBER,
+    }:
+        return True
+    return member.status == ChatMemberStatus.RESTRICTED and bool(getattr(member, "is_member", False))
+
+
+def subscription_target(event: Message | CallbackQuery) -> str:
+    if isinstance(event, Message):
+        parts = (event.text or "").split(maxsplit=1)
+        if len(parts) == 2 and parts[0] == "/start" and re.fullmatch(r"ep_\d+", parts[1]):
+            return parts[1]
+    return "home"
+
+
+class SubscriptionMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[Any, dict[str, Any]], Awaitable[Any]],
+        event: Message | CallbackQuery,
+        data: dict[str, Any],
+    ) -> Any:
+        user = event.from_user
+        admin_id = data.get("admin_id")
+        channel_id = data.get("channel_id")
+        if not user or not channel_id or user.id == admin_id:
+            return await handler(event, data)
+        if isinstance(event, CallbackQuery) and (event.data or "").startswith("subcheck:"):
+            return await handler(event, data)
+        bot: Bot = data["bot"]
+        if await is_channel_member(bot, channel_id, user.id):
+            return await handler(event, data)
+        text = (
+            "🔒 <b>Botdan foydalanish uchun kanalga obuna bo‘ling.</b>\n\n"
+            "1. <b>📢 Kanalga obuna bo‘lish</b> tugmasini bosing.\n"
+            "2. Kanalga qo‘shiling.\n"
+            "3. Botga qaytib <b>✅ Obunani tekshirish</b>ni bosing."
+        )
+        markup = subscription_kb(channel_id, subscription_target(event))
+        if isinstance(event, CallbackQuery):
+            await event.answer("Avval kanalga obuna bo‘ling.", show_alert=True)
+            await event.message.answer(text, reply_markup=markup)
+            return None
+        await event.answer(text, reply_markup=markup)
+        return None
+
+
+subscription_middleware = SubscriptionMiddleware()
+router.message.outer_middleware(subscription_middleware)
+router.callback_query.outer_middleware(subscription_middleware)
 
 
 class AdminFlow(StatesGroup):
@@ -138,6 +211,35 @@ async def home(call: CallbackQuery, state: FSMContext, admin_id: int):
 async def cancel(call: CallbackQuery, state: FSMContext, admin_id: int):
     await state.clear()
     await safe_edit(call, "Amal bekor qilindi.", main_menu(is_admin(call.from_user.id, admin_id)))
+
+
+@router.callback_query(F.data.startswith("subcheck:"))
+async def check_subscription(
+    call: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    db: Database,
+    admin_id: int,
+    channel_id: str | None,
+):
+    if not channel_id or not await is_channel_member(bot, channel_id, call.from_user.id):
+        if channel_id:
+            await call.answer("❌ Hali kanalga obuna bo‘lmagansiz.", show_alert=True)
+        else:
+            await call.answer("Kanal sozlamasi topilmadi.", show_alert=True)
+        return
+    await state.clear()
+    target = (call.data or "subcheck:home").split(":", 1)[1]
+    if re.fullmatch(r"ep_\d+", target):
+        await safe_edit(call, "✅ <b>Obuna tasdiqlandi.</b>\n\nVideo ochilmoqda…")
+        if not await send_episode_message(call.message, db, int(target[3:])):
+            await call.message.answer("Video topilmadi.", reply_markup=main_menu())
+        return
+    await safe_edit(
+        call,
+        "✅ <b>Obuna tasdiqlandi!</b>\n\nKerakli bo‘limni tanlang:",
+        main_menu(is_admin(call.from_user.id, admin_id)),
+    )
 
 
 async def movie_keyboard(db: Database, page: int, prefix="movie", back="home"):
