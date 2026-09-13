@@ -22,8 +22,12 @@ class Database:
                 id BIGSERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
                 emoji TEXT NOT NULL DEFAULT '🎬',
+                poster_file_id TEXT,
+                description TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
+            ALTER TABLE movies ADD COLUMN IF NOT EXISTS poster_file_id TEXT;
+            ALTER TABLE movies ADD COLUMN IF NOT EXISTS description TEXT;
             CREATE UNIQUE INDEX IF NOT EXISTS movies_title_lower_uq ON movies (LOWER(title));
             CREATE TABLE IF NOT EXISTS episodes (
                 id BIGSERIAL PRIMARY KEY,
@@ -66,6 +70,19 @@ class Database:
     async def rename_movie(self, movie_id: int, title: str):
         assert self.pool
         return await self.pool.execute("UPDATE movies SET title=$2 WHERE id=$1", movie_id, title.strip())
+
+    async def set_movie_poster(self, movie_id: int, poster_file_id: str | None):
+        assert self.pool
+        return await self.pool.execute(
+            "UPDATE movies SET poster_file_id=$2 WHERE id=$1", movie_id, poster_file_id
+        )
+
+    async def set_movie_description(self, movie_id: int, description: str | None):
+        assert self.pool
+        clean = description.strip() if description else None
+        return await self.pool.execute(
+            "UPDATE movies SET description=$2 WHERE id=$1", movie_id, clean or None
+        )
 
     async def delete_movie(self, movie_id: int):
         assert self.pool
@@ -131,4 +148,3 @@ class Database:
     async def delete_episode(self, episode_id: int):
         assert self.pool
         return await self.pool.execute("DELETE FROM episodes WHERE id=$1", episode_id)
-

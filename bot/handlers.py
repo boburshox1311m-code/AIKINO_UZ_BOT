@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import re
 import logging
+from html import escape
 from typing import Any, Awaitable, Callable
 
 import asyncpg
@@ -94,11 +95,15 @@ router.callback_query.outer_middleware(subscription_middleware)
 
 class AdminFlow(StatesGroup):
     movie_title = State()
+    movie_poster = State()
+    movie_description = State()
     episode_number = State()
     episode_video = State()
     bulk_start_number = State()
     bulk_videos = State()
     rename_movie = State()
+    update_movie_poster = State()
+    update_movie_description = State()
     renumber_episode = State()
     replace_video = State()
 
@@ -120,6 +125,20 @@ def main_menu(is_admin=False):
 
 def cancel_kb():
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")]])
+
+
+def skip_movie_poster_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏭ Postersiz davom etish", callback_data="adm:skipposter")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")],
+    ])
+
+
+def skip_movie_description_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏭ Tavsifsiz yakunlash", callback_data="adm:skipdescription")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")],
+    ])
 
 
 def bulk_upload_kb():
@@ -305,7 +324,20 @@ async def render_movie(call, db, movie_id, page):
     if not movie:
         return await safe_edit(call, "Kino topilmadi.", main_menu())
     kb, count = await episode_keyboard(db, movie_id, page)
-    text = f"{movie['emoji']} <b>{movie['title']}</b>\n\nQismni tanlang:" if count else f"{movie['emoji']} <b>{movie['title']}</b>\n\nHozircha qismlar yo‘q."
+    title = f"{escape(movie['emoji'])} <b>{escape(movie['title'])}</b>"
+    description = escape(movie["description"]) if movie["description"] else ""
+    status = "Qismni tanlang:" if count else "Hozircha qismlar yo‘q."
+    text = f"{title}\n\n{description}\n\n{status}" if description else f"{title}\n\n{status}"
+    if movie["poster_file_id"]:
+        if call.message.photo:
+            try:
+                await call.message.edit_caption(caption=text, reply_markup=kb)
+            except TelegramBadRequest:
+                await call.message.answer_photo(movie["poster_file_id"], caption=text, reply_markup=kb)
+        else:
+            await call.message.answer_photo(movie["poster_file_id"], caption=text, reply_markup=kb)
+        await call.answer()
+        return
     await safe_edit(call, text, kb)
 
 
@@ -381,8 +413,63 @@ async def add_movie_save(message: Message, state: FSMContext, db: Database, admi
         movie = await db.add_movie(title, emoji)
     except asyncpg.UniqueViolationError:
         return await message.answer("Bu nomdagi kino oldin qo‘shilgan. Boshqa nom yozing:", reply_markup=cancel_kb())
+    await state.update_data(movie_id=movie["id"], movie_label=f"{movie['emoji']} {movie['title']}")
+    await state.set_state(AdminFlow.movie_poster)
+    await message.answer(
+        f"✅ <b>{escape(movie['emoji'])} {escape(movie['title'])}</b> yaratildi.\n\n"
+        "🖼 Endi kino posterini <b>rasm ko‘rinishida</b> yuboring.",
+        reply_markup=skip_movie_poster_kb(),
+    )
+
+
+async def ask_movie_description(message: Message, state: FSMContext):
+    await state.set_state(AdminFlow.movie_description)
+    await message.answer(
+        "📝 Endi kino haqida qisqa tavsif yozing.\n\n"
+        "Masalan: <i>Sevgi, sir va kutilmagan voqealarga boy serial.</i>\n"
+        "Tavsif 700 ta belgidan oshmasin.",
+        reply_markup=skip_movie_description_kb(),
+    )
+
+
+@router.message(AdminFlow.movie_poster, F.photo)
+async def add_movie_poster(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id): return
+    data = await state.get_data()
+    await db.set_movie_poster(data["movie_id"], message.photo[-1].file_id)
+    await message.answer("✅ Poster saqlandi.")
+    await ask_movie_description(message, state)
+
+
+@router.callback_query(AdminFlow.movie_poster, F.data == "adm:skipposter")
+async def skip_movie_poster(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await call.answer()
+    await ask_movie_description(call.message, state)
+
+
+@router.message(AdminFlow.movie_poster)
+async def movie_poster_required(message: Message):
+    await message.answer("Iltimos, posterni oddiy rasm ko‘rinishida yuboring.", reply_markup=skip_movie_poster_kb())
+
+
+@router.message(AdminFlow.movie_description, F.text)
+async def add_movie_description(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id): return
+    text = message.text.strip()
+    if len(text) > 700:
+        return await message.answer("Tavsif juda uzun. 700 ta belgidan qisqaroq yozing:", reply_markup=skip_movie_description_kb())
+    data = await state.get_data()
+    await db.set_movie_description(data["movie_id"], text)
     await state.clear()
-    await message.answer(f"✅ <b>{movie['emoji']} {movie['title']}</b> qo‘shildi.", reply_markup=admin_menu())
+    await message.answer("✅ Poster va tavsif saqlandi. Kino tayyor!", reply_markup=admin_menu())
+
+
+@router.callback_query(AdminFlow.movie_description, F.data == "adm:skipdescription")
+async def skip_movie_description(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.clear()
+    await safe_edit(call, "✅ Kino saqlandi.", admin_menu())
 
 
 async def admin_movie_picker(db: Database, action: str, back="admin"):
@@ -558,6 +645,8 @@ async def edit_options(call: CallbackQuery, admin_id: int):
     if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ Kino nomini o‘zgartirish", callback_data="adm:editmovie")],
+        [InlineKeyboardButton(text="🖼 Kino posterini o‘zgartirish", callback_data="adm:editposter")],
+        [InlineKeyboardButton(text="📝 Kino tavsifini o‘zgartirish", callback_data="adm:editdescription")],
         [InlineKeyboardButton(text="🔢 Qism raqamini o‘zgartirish", callback_data="adm:editepisode")],
         [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin")],
     ])
@@ -586,6 +675,86 @@ async def rename_movie_save(message: Message, state: FSMContext, db: Database, a
         return await message.answer("Bu nom band. Boshqa nom yozing:", reply_markup=cancel_kb())
     await state.clear()
     await message.answer("✅ Kino nomi o‘zgartirildi.", reply_markup=admin_menu())
+
+
+@router.callback_query(F.data == "adm:editposter")
+async def edit_poster_picker(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await safe_edit(call, "Posterini o‘zgartiradigan kinoni tanlang:", await admin_movie_picker(db, "adm:setposter"))
+
+
+@router.callback_query(F.data.startswith("adm:setposter:"))
+async def edit_poster_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    movie_id = int(call.data.rsplit(":", 1)[1])
+    await state.update_data(movie_id=movie_id)
+    await state.set_state(AdminFlow.update_movie_poster)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Hozirgi posterni o‘chirish", callback_data=f"adm:clearposter:{movie_id}")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")],
+    ])
+    await safe_edit(call, "🖼 Yangi posterni rasm ko‘rinishida yuboring:", kb)
+
+
+@router.message(AdminFlow.update_movie_poster, F.photo)
+async def edit_poster_save(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id): return
+    data = await state.get_data()
+    await db.set_movie_poster(data["movie_id"], message.photo[-1].file_id)
+    await state.clear()
+    await message.answer("✅ Kino posteri yangilandi.", reply_markup=admin_menu())
+
+
+@router.callback_query(F.data.startswith("adm:clearposter:"))
+async def clear_poster(call: CallbackQuery, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await db.set_movie_poster(int(call.data.rsplit(":", 1)[1]), None)
+    await state.clear()
+    await safe_edit(call, "✅ Kino posteri o‘chirildi.", admin_menu())
+
+
+@router.message(AdminFlow.update_movie_poster)
+async def update_poster_required(message: Message):
+    await message.answer("Iltimos, posterni oddiy rasm ko‘rinishida yuboring.", reply_markup=cancel_kb())
+
+
+@router.callback_query(F.data == "adm:editdescription")
+async def edit_description_picker(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await safe_edit(call, "Tavsifini o‘zgartiradigan kinoni tanlang:", await admin_movie_picker(db, "adm:setdescription"))
+
+
+@router.callback_query(F.data.startswith("adm:setdescription:"))
+async def edit_description_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    movie_id = int(call.data.rsplit(":", 1)[1])
+    await state.update_data(movie_id=movie_id)
+    await state.set_state(AdminFlow.update_movie_description)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Hozirgi tavsifni o‘chirish", callback_data=f"adm:cleardescription:{movie_id}")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")],
+    ])
+    await safe_edit(call, "📝 Yangi tavsifni yozib yuboring (700 ta belgigacha):", kb)
+
+
+@router.message(AdminFlow.update_movie_description, F.text)
+async def edit_description_save(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id): return
+    text = message.text.strip()
+    if len(text) > 700:
+        return await message.answer("Tavsif juda uzun. 700 ta belgidan qisqaroq yozing:", reply_markup=cancel_kb())
+    data = await state.get_data()
+    await db.set_movie_description(data["movie_id"], text)
+    await state.clear()
+    await message.answer("✅ Kino tavsifi yangilandi.", reply_markup=admin_menu())
+
+
+@router.callback_query(F.data.startswith("adm:cleardescription:"))
+async def clear_description(call: CallbackQuery, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await db.set_movie_description(int(call.data.rsplit(":", 1)[1]), None)
+    await state.clear()
+    await safe_edit(call, "✅ Kino tavsifi o‘chirildi.", admin_menu())
 
 
 async def admin_episode_picker(db: Database, movie_id: int, action: str):
