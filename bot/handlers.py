@@ -23,6 +23,8 @@ class AdminFlow(StatesGroup):
     movie_title = State()
     episode_number = State()
     episode_video = State()
+    bulk_start_number = State()
+    bulk_videos = State()
     rename_movie = State()
     renumber_episode = State()
     replace_video = State()
@@ -47,10 +49,18 @@ def cancel_kb():
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")]])
 
 
+def bulk_upload_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Yuklashni tugatish", callback_data="adm:bulkfinish")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")],
+    ])
+
+
 def admin_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Yangi kino qo‘shish", callback_data="adm:addmovie")],
         [InlineKeyboardButton(text="➕ Yangi qism qo‘shish", callback_data="adm:addepisode")],
+        [InlineKeyboardButton(text="📚 Qismlarni ketma-ket yuklash", callback_data="adm:bulk")],
         [InlineKeyboardButton(text="📹 Video qo‘shish/almashtirish", callback_data="adm:video")],
         [InlineKeyboardButton(text="✏️ Kino/qismni tahrirlash", callback_data="adm:edit")],
         [InlineKeyboardButton(text="🗑 Kino/qismni o‘chirish", callback_data="adm:delete")],
@@ -347,6 +357,87 @@ async def add_ep_video(
 @router.message(AdminFlow.episode_video)
 async def video_required(message: Message):
     await message.answer("Iltimos, aynan video yuboring.", reply_markup=cancel_kb())
+
+
+@router.callback_query(F.data == "adm:bulk")
+async def bulk_pick_movie(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await safe_edit(
+        call,
+        "📚 <b>Qismlarni ketma-ket yuklash</b>\n\nKinoni tanlang:",
+        await admin_movie_picker(db, "adm:bulkmovie"),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:bulkmovie:"))
+async def bulk_start_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.update_data(movie_id=int(call.data.rsplit(":", 1)[1]))
+    await state.set_state(AdminFlow.bulk_start_number)
+    await safe_edit(
+        call,
+        "Birinchi video qaysi qismdan boshlanishini yozing.\n\nMasalan: <code>1</code>",
+        cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.bulk_start_number, F.text)
+async def bulk_start_save(message: Message, state: FSMContext, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    if not message.text.isdigit() or int(message.text) < 1:
+        return await message.answer("Faqat musbat raqam yozing. Masalan: <code>1</code>", reply_markup=cancel_kb())
+    start_number = int(message.text)
+    await state.update_data(next_episode_number=start_number, uploaded_count=0)
+    await state.set_state(AdminFlow.bulk_videos)
+    await message.answer(
+        f"📹 Videolarni tartib bilan yuboring.\n\n"
+        f"Birinchi video <b>{start_number}-QISM</b> bo‘ladi. Har bir videodan keyin qism raqami avtomatik oshadi.\n\n"
+        "<i>Videolarni oddiy video ko‘rinishida yuboring. Eski qismlarni yuklashda kanalga alohida e’lon chiqmaydi.</i>",
+        reply_markup=bulk_upload_kb(),
+    )
+
+
+@router.message(AdminFlow.bulk_videos, F.video)
+async def bulk_video_save(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    data = await state.get_data()
+    number = data["next_episode_number"]
+    await db.upsert_episode(
+        data["movie_id"], number, message.video.file_id, message.video.file_unique_id
+    )
+    uploaded_count = data["uploaded_count"] + 1
+    await state.update_data(next_episode_number=number + 1, uploaded_count=uploaded_count)
+    await message.answer(
+        f"✅ <b>{number}-QISM</b> saqlandi.\n\nKeyingi video <b>{number + 1}-QISM</b> bo‘ladi.",
+        reply_markup=bulk_upload_kb(),
+    )
+
+
+@router.callback_query(AdminFlow.bulk_videos, F.data == "adm:bulkfinish")
+async def bulk_finish(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    data = await state.get_data()
+    count = data.get("uploaded_count", 0)
+    await state.clear()
+    await safe_edit(
+        call,
+        f"✅ Ketma-ket yuklash tugadi. <b>{count} ta qism</b> saqlandi.\n\n"
+        "Yangi qismga kanal e’loni chiqarish uchun odatdagi <b>➕ Yangi qism qo‘shish</b> tugmasidan foydalaning.",
+        admin_menu(),
+    )
+
+
+@router.message(AdminFlow.bulk_videos)
+async def bulk_video_required(message: Message):
+    await message.answer(
+        "Iltimos, aynan video yuboring yoki <b>✅ Yuklashni tugatish</b>ni bosing.",
+        reply_markup=bulk_upload_kb(),
+    )
 
 
 @router.callback_query(F.data == "adm:list")
