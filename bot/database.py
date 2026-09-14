@@ -108,9 +108,15 @@ class Database:
                 value TEXT NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
-            INSERT INTO bot_settings(key, value)
-            VALUES('vip_price_stars', '100')
+            INSERT INTO bot_settings(key, value) VALUES
+                ('vip_price_stars', '100'),
+                ('stars_payments_enabled', 'true'),
+                ('vip_stars_plans', '10:50,20:80,30:100')
             ON CONFLICT (key) DO NOTHING;
+            CREATE TABLE IF NOT EXISTS payment_terms_acceptance (
+                user_id BIGINT PRIMARY KEY,
+                accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
             CREATE TABLE IF NOT EXISTS vip_payments (
                 id BIGSERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
@@ -632,6 +638,45 @@ class Database:
             ON CONFLICT (key) DO UPDATE
             SET value=EXCLUDED.value, updated_at=NOW()
         """, key, value)
+
+    async def stars_payments_enabled(self) -> bool:
+        return (await self.get_setting("stars_payments_enabled", "true")).lower() == "true"
+
+    async def stars_plans(self) -> list[tuple[int, int]]:
+        raw = await self.get_setting("vip_stars_plans", "10:50,20:80,30:100")
+        plans: list[tuple[int, int]] = []
+        try:
+            for item in raw.split(","):
+                days_text, stars_text = item.strip().split(":", 1)
+                days, stars = int(days_text), int(stars_text)
+                if 1 <= days <= 3650 and 1 <= stars <= 10000:
+                    plans.append((days, stars))
+        except (TypeError, ValueError):
+            plans = []
+        return sorted(set(plans)) or [(10, 50), (20, 80), (30, 100)]
+
+    async def set_stars_plans(self, plans: list[tuple[int, int]]):
+        value = ",".join(f"{days}:{stars}" for days, stars in sorted(set(plans)))
+        await self.set_setting("vip_stars_plans", value)
+        for days, stars in plans:
+            if days == 30:
+                await self.set_setting("vip_price_stars", str(stars))
+                break
+
+    async def has_accepted_payment_terms(self, user_id: int) -> bool:
+        assert self.pool
+        return bool(await self.pool.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM payment_terms_acceptance WHERE user_id=$1)",
+            user_id,
+        ))
+
+    async def accept_payment_terms(self, user_id: int):
+        assert self.pool
+        return await self.pool.execute("""
+            INSERT INTO payment_terms_acceptance(user_id, accepted_at)
+            VALUES($1, NOW())
+            ON CONFLICT(user_id) DO UPDATE SET accepted_at=NOW()
+        """, user_id)
 
     async def vip_price_stars(self) -> int:
         value = await self.get_setting("vip_price_stars", "100")

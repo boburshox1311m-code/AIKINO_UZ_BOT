@@ -5,6 +5,7 @@ import math
 import re
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
@@ -16,7 +17,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramFor
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import Database
@@ -126,6 +127,11 @@ class AdminFlow(StatesGroup):
     manual_card_holder = State()
     manual_price_uzs = State()
     manual_vip_days = State()
+    stars_plans = State()
+
+
+class PaymentSupportFlow(StatesGroup):
+    message = State()
 
 
 class SearchFlow(StatesGroup):
@@ -197,6 +203,7 @@ def admin_menu():
 
 def vip_locked_markup():
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⭐ Stars bilan VIP olish", callback_data="vipbuy")],
         [InlineKeyboardButton(text="🎬 Kino so‘rash", callback_data="requestmovie")],
         [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
     ])
@@ -208,6 +215,7 @@ def vip_admin_menu():
         [InlineKeyboardButton(text="➖ VIPni bekor qilish", callback_data="adm:viprevoke")],
         [InlineKeyboardButton(text="🎬 VIP kinolarni belgilash", callback_data="adm:vipmovies")],
         [InlineKeyboardButton(text="👥 Faol VIP ro‘yxati", callback_data="adm:viplist")],
+        [InlineKeyboardButton(text="⭐ Stars to‘lov sozlamalari", callback_data="adm:starspay")],
         [InlineKeyboardButton(text="💳 Karta to‘lov sozlamalari", callback_data="adm:manualpay")],
         [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin")],
     ])
@@ -311,6 +319,241 @@ async def send_episode_message(
         await db.save_watch_progress(viewer_user_id, ep["id"])
         await db.record_episode_view(viewer_user_id, ep["id"])
     return True
+
+
+
+PAYMENT_TERMS_TEXT = (
+    "📄 <b>VIP to‘lov shartlari</b>\n\n"
+    "• VIP faqat tanlangan muddat davomida ishlaydi.\n"
+    "• 10 va 20 kunlik paketlar bir martalik.\n"
+    "• 30 kunlik paket avtomatik yangilanadigan obuna. Uni istalgan payt bekor qilish mumkin; "
+    "bekor qilinganda joriy muddat oxirigacha ishlaydi.\n"
+    "• To‘lov amalga oshgach VIP avtomatik yoqiladi.\n"
+    "• To‘lov muammosi uchun /paysupport buyrug‘idan foydalaning.\n"
+    "• Xarid bo‘yicha yordamni bot egasi beradi; Telegram yordam xizmati javobgar emas."
+)
+
+
+def stars_plan_markup(plans, active_subscription=False):
+    rows = []
+    for days, stars in plans:
+        suffix = " · avtomatik" if days == 30 else ""
+        rows.append([InlineKeyboardButton(
+            text=f"⭐ {days} kun — {stars} Stars{suffix}",
+            callback_data=f"vipstar:{days}:{stars}",
+        )])
+    if active_subscription:
+        rows.append([InlineKeyboardButton(text="❌ Avtomatik obunani bekor qilish", callback_data="vipcancelstars")])
+    rows.extend([
+        [InlineKeyboardButton(text="📄 To‘lov shartlari", callback_data="vipterms")],
+        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def render_stars_payment(call: CallbackQuery, db: Database):
+    if not await db.stars_payments_enabled():
+        return await safe_edit(call, "⭐ Stars orqali to‘lov vaqtincha o‘chirilgan.", vip_locked_markup())
+    plans = await db.stars_plans()
+    vip = await db.vip_user(call.from_user.id)
+    subscription = await db.active_subscription_payment(call.from_user.id)
+    status = ""
+    if vip:
+        expires = vip["expires_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+        status = f"\n\n💎 Hozirgi VIP muddati: <b>{expires}</b> gacha."
+    await safe_edit(
+        call,
+        "⭐ <b>Telegram Stars orqali VIP</b>\n\n"
+        "Paketni tanlang. 10/20 kunlik paketlar bir martalik, 30 kunlik paket esa har 30 kunda avtomatik yangilanadi."
+        + status,
+        stars_plan_markup(plans, bool(subscription)),
+    )
+
+
+def parse_vip_payload(payload: str):
+    parts = payload.split(":")
+    if len(parts) != 5 or parts[0] != "vipstars":
+        return None
+    try:
+        user_id, days, stars = int(parts[1]), int(parts[2]), int(parts[3])
+    except ValueError:
+        return None
+    kind = parts[4]
+    if kind not in {"once", "sub"}:
+        return None
+    return user_id, days, stars, kind
+
+
+@router.message(Command("terms"))
+async def payment_terms_command(message: Message):
+    await message.answer(PAYMENT_TERMS_TEXT)
+
+
+@router.callback_query(F.data == "vipterms")
+async def payment_terms_callback(call: CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Shartlarga roziman", callback_data="viptermsagree")],
+        [InlineKeyboardButton(text="⬅️ VIP to‘lov", callback_data="vipbuy")],
+    ])
+    await safe_edit(call, PAYMENT_TERMS_TEXT, kb)
+
+
+@router.callback_query(F.data == "viptermsagree")
+async def payment_terms_agree(call: CallbackQuery, db: Database):
+    await db.accept_payment_terms(call.from_user.id)
+    await call.answer("Shartlar qabul qilindi.")
+    await render_stars_payment(call, db)
+
+
+@router.callback_query(F.data == "vipbuy")
+async def vip_buy(call: CallbackQuery, db: Database):
+    if not await db.has_accepted_payment_terms(call.from_user.id):
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ O‘qidim va roziman", callback_data="viptermsagree")],
+            [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+        ])
+        return await safe_edit(call, PAYMENT_TERMS_TEXT, kb)
+    await render_stars_payment(call, db)
+
+
+@router.callback_query(F.data.startswith("vipstar:"))
+async def create_stars_invoice(call: CallbackQuery, db: Database, bot: Bot):
+    if not await db.has_accepted_payment_terms(call.from_user.id):
+        return await call.answer("Avval to‘lov shartlarini qabul qiling.", show_alert=True)
+    if not await db.stars_payments_enabled():
+        return await call.answer("Stars to‘lovi vaqtincha o‘chirilgan.", show_alert=True)
+    try:
+        _, days_text, stars_text = call.data.split(":")
+        days, stars = int(days_text), int(stars_text)
+    except (TypeError, ValueError):
+        return await call.answer("Paket noto‘g‘ri.", show_alert=True)
+    plans = await db.stars_plans()
+    if (days, stars) not in plans:
+        return await call.answer("Paket narxi o‘zgargan. Sahifani qayta oching.", show_alert=True)
+    kind = "sub" if days == 30 else "once"
+    payload = f"vipstars:{call.from_user.id}:{days}:{stars}:{kind}"
+    kwargs = dict(
+        title=f"AIKINO_UZ VIP — {days} kun",
+        description=(
+            "Har 30 kunda avtomatik yangilanadigan VIP obuna."
+            if kind == "sub" else f"{days} kunlik bir martalik VIP huquqi."
+        ),
+        payload=payload,
+        provider_token="",
+        currency="XTR",
+        prices=[LabeledPrice(label=f"VIP {days} kun", amount=stars)],
+    )
+    if kind == "sub":
+        kwargs["subscription_period"] = 2592000
+    invoice_url = await bot.create_invoice_link(**kwargs)
+    text = (
+        f"⭐ <b>{days} kunlik VIP</b>\n\n"
+        f"Narxi: <b>{stars} Stars</b>\n"
+        + ("🔄 Har 30 kunda avtomatik yangilanadi.\n" if kind == "sub" else "Bir martalik to‘lov.\n")
+        + "\nTo‘lash uchun tugmani bosing:"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"⭐ {stars} Stars to‘lash", url=invoice_url)],
+        [InlineKeyboardButton(text="⬅️ Paketlar", callback_data="vipbuy")],
+    ])
+    await safe_edit(call, text, kb)
+
+
+@router.pre_checkout_query()
+async def stars_pre_checkout(query: PreCheckoutQuery, db: Database):
+    parsed = parse_vip_payload(query.invoice_payload)
+    if not parsed:
+        return await query.answer(ok=False, error_message="To‘lov ma’lumoti noto‘g‘ri.")
+    user_id, days, stars, kind = parsed
+    plans = await db.stars_plans()
+    valid = (
+        query.currency == "XTR"
+        and query.from_user.id == user_id
+        and query.total_amount == stars
+        and (days, stars) in plans
+        and kind == ("sub" if days == 30 else "once")
+        and await db.has_accepted_payment_terms(user_id)
+        and await db.stars_payments_enabled()
+    )
+    await query.answer(ok=valid, error_message=None if valid else "Paket narxi yoki holati o‘zgargan. Qayta urinib ko‘ring.")
+
+
+@router.message(F.successful_payment)
+async def stars_payment_success(message: Message, db: Database):
+    payment = message.successful_payment
+    parsed = parse_vip_payload(payment.invoice_payload)
+    if not parsed or payment.currency != "XTR":
+        return
+    user_id, days, stars, kind = parsed
+    if user_id != message.from_user.id or payment.total_amount != stars:
+        return
+    expiration_value = getattr(payment, "subscription_expiration_date", None)
+    if kind == "sub" and expiration_value:
+        expires_at = datetime.fromtimestamp(expiration_value, tz=timezone.utc)
+    else:
+        current_vip = await db.vip_user(user_id)
+        base = max(datetime.now(timezone.utc), current_vip["expires_at"]) if current_vip else datetime.now(timezone.utc)
+        expires_at = base + timedelta(days=days)
+    inserted = await db.record_vip_payment(
+        user_id=user_id,
+        telegram_charge_id=payment.telegram_payment_charge_id,
+        provider_charge_id=payment.provider_payment_charge_id or None,
+        invoice_payload=payment.invoice_payload,
+        currency=payment.currency,
+        total_amount=payment.total_amount,
+        expires_at=expires_at,
+        is_recurring=bool(getattr(payment, "is_recurring", False)),
+        is_first_recurring=bool(getattr(payment, "is_first_recurring", False)),
+    )
+    if not inserted:
+        return
+    expires = expires_at.astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+    await message.answer(
+        "✅ <b>Stars to‘lovi qabul qilindi!</b>\n\n"
+        f"💎 VIP huquqi <b>{expires}</b> gacha faollashtirildi.",
+        reply_markup=main_menu(),
+    )
+
+
+@router.callback_query(F.data == "vipcancelstars")
+async def cancel_stars_subscription(call: CallbackQuery, db: Database, bot: Bot):
+    payment = await db.active_subscription_payment(call.from_user.id)
+    if not payment:
+        return await call.answer("Faol avtomatik Stars obunasi topilmadi.", show_alert=True)
+    await bot.edit_user_star_subscription(
+        user_id=call.from_user.id,
+        telegram_payment_charge_id=payment["telegram_payment_charge_id"],
+        is_canceled=True,
+    )
+    await db.cancel_subscription_renewal(payment["telegram_payment_charge_id"])
+    await safe_edit(
+        call,
+        "✅ Avtomatik yangilanish bekor qilindi. VIP joriy muddat tugaguncha ishlaydi.",
+        vip_locked_markup(),
+    )
+
+
+@router.message(Command("paysupport"))
+async def payment_support_start(message: Message, state: FSMContext):
+    await state.set_state(PaymentSupportFlow.message)
+    await message.answer(
+        "🆘 To‘lov bo‘yicha muammoingizni bitta xabarda yozing. Admin sizga yordam beradi.",
+        reply_markup=cancel_kb(),
+    )
+
+
+@router.message(PaymentSupportFlow.message)
+async def payment_support_send(message: Message, state: FSMContext, bot: Bot, admin_id: int):
+    await state.clear()
+    text = message.text or message.caption or "Media/fayl yuborildi"
+    await bot.send_message(
+        admin_id,
+        "🆘 <b>To‘lov bo‘yicha yordam so‘rovi</b>\n\n"
+        f"👤 {escape(message.from_user.full_name)}\n"
+        f"🆔 <code>{message.from_user.id}</code>\n\n"
+        f"{escape(text[:2000])}",
+    )
+    await message.answer("✅ Xabaringiz adminga yuborildi.", reply_markup=main_menu())
 
 
 @router.message(CommandStart())
@@ -1318,6 +1561,95 @@ async def admin_vip_list(call: CallbackQuery, db: Database, admin_id: int):
     if not users:
         lines.append("\n\nHozircha faol VIP foydalanuvchilar yo‘q.")
     await safe_edit(call, "".join(lines), vip_admin_menu())
+
+
+
+def stars_admin_back_markup():
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⬅️ Stars sozlamalari", callback_data="adm:starspay")
+    ]])
+
+
+async def render_stars_admin(call: CallbackQuery, db: Database):
+    enabled = await db.stars_payments_enabled()
+    plans = await db.stars_plans()
+    plan_text = "\n".join(
+        f"• {days} kun — {stars} Stars" + (" (avtomatik)" if days == 30 else "")
+        for days, stars in plans
+    )
+    rows = [
+        [InlineKeyboardButton(
+            text="⛔️ Stars to‘lovini o‘chirish" if enabled else "✅ Stars to‘lovini yoqish",
+            callback_data="adm:starstoggle",
+        )],
+        [InlineKeyboardButton(text="✏️ Paket va narxlarni o‘zgartirish", callback_data="adm:starsplans")],
+        [InlineKeyboardButton(text="⬅️ VIP boshqaruvi", callback_data="adm:vip")],
+    ]
+    await safe_edit(
+        call,
+        "⭐ <b>Stars to‘lov sozlamalari</b>\n\n"
+        f"Holati: <b>{'✅ Yoqilgan' if enabled else '⛔️ O‘chiq'}</b>\n\n"
+        f"{plan_text}\n\n"
+        "30 kunlik paket Telegram talabi bo‘yicha avtomatik obuna. 10/20 kunlik paketlar bir martalik.",
+        InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@router.callback_query(F.data == "adm:starspay")
+async def admin_stars_panel(call: CallbackQuery, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.clear()
+    await render_stars_admin(call, db)
+
+
+@router.callback_query(F.data == "adm:starstoggle")
+async def admin_stars_toggle(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    enabled = await db.stars_payments_enabled()
+    await db.set_setting("stars_payments_enabled", "false" if enabled else "true")
+    await record_admin_action(db, call.from_user, "⭐ Stars to‘lovi holati o‘zgartirildi", "O‘chirildi" if enabled else "Yoqildi")
+    await render_stars_admin(call, db)
+
+
+@router.callback_query(F.data == "adm:starsplans")
+async def admin_stars_plans_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.set_state(AdminFlow.stars_plans)
+    await safe_edit(
+        call,
+        "✏️ Paketlarni quyidagi ko‘rinishda yozing:\n\n"
+        "<code>10:50, 20:80, 30:100</code>\n\n"
+        "Birinchi raqam — kun, ikkinchisi — Stars narxi. 30 kunlik paket avtomatik obuna bo‘ladi.",
+        cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.stars_plans, F.text)
+async def admin_stars_plans_save(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    plans = []
+    try:
+        for item in message.text.split(","):
+            days_text, stars_text = item.strip().split(":", 1)
+            days, stars = int(days_text), int(stars_text)
+            if not 1 <= days <= 3650 or not 1 <= stars <= 10000:
+                raise ValueError
+            plans.append((days, stars))
+    except ValueError:
+        return await message.answer(
+            "Format noto‘g‘ri. Masalan: <code>10:50, 20:80, 30:100</code>",
+            reply_markup=cancel_kb(),
+        )
+    if not plans or len(plans) > 6 or len({days for days, _ in plans}) != len(plans):
+        return await message.answer("1–6 ta takrorlanmagan paket kiriting.", reply_markup=cancel_kb())
+    await db.set_stars_plans(plans)
+    await record_admin_action(db, message.from_user, "⭐ Stars paketlari yangilandi", ", ".join(f"{d} kun={s}⭐" for d, s in plans))
+    await state.clear()
+    await message.answer("✅ Stars paketlari saqlandi.", reply_markup=stars_admin_back_markup())
 
 
 def manual_payment_back_markup():
