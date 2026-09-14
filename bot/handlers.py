@@ -25,6 +25,7 @@ router = Router()
 PAGE_MOVIES = 8
 PAGE_EPISODES = 10
 PAGE_REQUESTS = 10
+PAGE_ADMIN_ACTIONS = 10
 LONDON_TZ = ZoneInfo("Europe/London")
 ERROR_ALERT_COOLDOWN = 300
 _last_error_alerts: dict[str, float] = {}
@@ -187,6 +188,7 @@ def admin_menu():
         [InlineKeyboardButton(text="📊 Statistika", callback_data="adm:stats")],
         [InlineKeyboardButton(text="📣 Hammaga xabar yuborish", callback_data="adm:broadcast")],
         [InlineKeyboardButton(text="📜 Tarqatmalar tarixi", callback_data="adm:broadcasts:0")],
+        [InlineKeyboardButton(text="🛡 Admin amallari tarixi", callback_data="adm:actions:0")],
         [InlineKeyboardButton(text="📩 Kino so‘rovlari", callback_data="adm:requests:0")],
         [InlineKeyboardButton(text="💎 VIP boshqaruvi", callback_data="adm:vip")],
         [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
@@ -238,6 +240,19 @@ async def safe_edit(call: CallbackQuery, text: str, markup=None):
 
 def is_admin(user_id: int, admin_id: int):
     return user_id == admin_id
+
+
+async def record_admin_action(
+    db: Database,
+    user,
+    action: str,
+    details: str | None = None,
+):
+    try:
+        name = f"@{user.username}" if user.username else user.full_name
+        await db.add_admin_action(user.id, name, action, details)
+    except Exception:
+        logging.getLogger(__name__).exception("Admin amalini tarixga yozib bo‘lmadi")
 
 
 def format_number(value: int) -> str:
@@ -729,6 +744,44 @@ async def admin_statistics(call: CallbackQuery, db: Database, admin_id: int):
     await safe_edit(call, text, kb)
 
 
+@router.callback_query(F.data.startswith("adm:actions:"))
+async def admin_action_history(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    try:
+        page = max(0, int(call.data.rsplit(":", 1)[1]))
+    except (TypeError, ValueError):
+        page = 0
+    total = await db.admin_action_count()
+    max_page = max(0, math.ceil(total / PAGE_ADMIN_ACTIONS) - 1)
+    page = min(page, max_page)
+    items = await db.admin_actions(page * PAGE_ADMIN_ACTIONS, PAGE_ADMIN_ACTIONS)
+    lines = ["🛡 <b>Admin amallari tarixi</b>", ""]
+    if not items:
+        lines.append("Hozircha amallar tarixi yo‘q.")
+    for item in items:
+        created = item["created_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+        admin_name = escape(item["admin_name"] or str(item["admin_id"]))
+        lines.append(f"• <b>{escape(item['action'])}</b>")
+        if item["details"]:
+            lines.append(f"  {escape(item['details'])}")
+        lines.append(f"  👤 {admin_name} · 🕒 {created}")
+    rows = []
+    navigation = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton(text="⬅️", callback_data=f"adm:actions:{page - 1}"))
+    if page < max_page:
+        navigation.append(InlineKeyboardButton(text="➡️", callback_data=f"adm:actions:{page + 1}"))
+    if navigation:
+        rows.append(navigation)
+    rows.append([InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin")])
+    await safe_edit(
+        call,
+        "\n".join(lines),
+        InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
 @router.callback_query(F.data == "adm:broadcast")
 async def broadcast_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
     if not is_admin(call.from_user.id, admin_id):
@@ -873,6 +926,7 @@ async def broadcast_send(
         await asyncio.sleep(0.055)
 
     await db.finish_broadcast_history(history["id"], sent, failed)
+    await record_admin_action(db, call.from_user, "📣 Xabar tarqatildi", f"Yuborildi: {sent}; yuborilmadi: {failed}")
     await call.message.edit_text(
         "✅ <b>Tarqatish yakunlandi.</b>\n\n"
         f"📨 Yuborildi: <b>{format_number(sent)}</b>\n"
@@ -1066,6 +1120,7 @@ async def admin_complete_movie_request(
     request = await db.complete_movie_request(int(request_id))
     if not request:
         return await call.answer("Bu so‘rov allaqachon yopilgan.", show_alert=True)
+    await record_admin_action(db, call.from_user, "📩 Kino so‘rovi bajarildi", request["title"])
     try:
         await bot.send_message(
             request["user_id"],
@@ -1092,6 +1147,7 @@ async def admin_delete_movie_request(call: CallbackQuery, db: Database, admin_id
     request = await db.delete_movie_request(int(request_id))
     if not request:
         return await call.answer("So‘rov topilmadi.", show_alert=True)
+    await record_admin_action(db, call.from_user, "🗑 Kino so‘rovi o‘chirildi", request["title"])
     await safe_edit(
         call,
         f"🗑 <b>{escape(request['title'])}</b> so‘rovi o‘chirildi.",
@@ -1157,6 +1213,7 @@ async def admin_vip_days_save(
     user_id = data["vip_user_id"]
     days = int(message.text)
     vip = await db.grant_vip(user_id, days)
+    await record_admin_action(db, message.from_user, "💎 VIP berildi", f"Foydalanuvchi ID: {user_id}; {days} kun")
     await state.clear()
     expires = vip["expires_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
     await message.answer(
@@ -1208,6 +1265,7 @@ async def admin_vip_revoke_save(
         return await message.answer(
             "Bu foydalanuvchida VIP huquqi topilmadi.", reply_markup=vip_admin_menu()
         )
+    await record_admin_action(db, message.from_user, "➖ VIP bekor qilindi", f"Foydalanuvchi ID: {user_id}")
     await message.answer("✅ VIP huquqi bekor qilindi.", reply_markup=vip_admin_menu())
     try:
         await bot.send_message(user_id, "ℹ️ VIP huquqingiz bekor qilindi.", reply_markup=main_menu())
@@ -1236,6 +1294,7 @@ async def admin_vip_movie_toggle(call: CallbackQuery, db: Database, admin_id: in
     if not movie:
         return await call.answer("Kino topilmadi.", show_alert=True)
     updated = await db.set_movie_vip(movie_id, not movie["is_vip"])
+    await record_admin_action(db, call.from_user, "💎 Kino VIP holati o‘zgartirildi", f"{updated['title']}: {'VIP' if updated['is_vip'] else 'oddiy'}")
     status = "💎 VIP qilindi" if updated["is_vip"] else "🎬 Oddiy katalogga qaytarildi"
     await safe_edit(
         call,
@@ -1330,6 +1389,7 @@ async def admin_manual_payment_toggle(
     if not settings["enabled"] and (not settings["card_number"] or not settings["card_holder"]):
         return await call.answer("Avval karta raqami va karta egasini kiriting.", show_alert=True)
     await db.set_setting("manual_payments_enabled", "false" if settings["enabled"] else "true")
+    await record_admin_action(db, call.from_user, "💳 Karta to‘lovi holati o‘zgartirildi", "O‘chirildi" if settings["enabled"] else "Yoqildi")
     await render_manual_payment_admin(call, db, payment_url)
 
 
@@ -1353,6 +1413,7 @@ async def admin_manual_card_save(message: Message, state: FSMContext, db: Databa
     if not 16 <= len(digits) <= 19:
         return await message.answer("Karta raqamini to‘g‘ri kiriting (16–19 ta raqam).", reply_markup=cancel_kb())
     await db.set_setting("manual_card_number", digits)
+    await record_admin_action(db, message.from_user, "💳 Karta raqami yangilandi", "Maxfiy qiymat tarixga yozilmadi")
     await state.clear()
     await message.answer("✅ Karta raqami saqlandi.", reply_markup=manual_payment_back_markup())
 
@@ -1373,6 +1434,7 @@ async def admin_manual_holder_save(message: Message, state: FSMContext, db: Data
     if not 2 <= len(holder) <= 80:
         return await message.answer("Ism-familiya 2–80 ta belgi bo‘lsin.", reply_markup=cancel_kb())
     await db.set_setting("manual_card_holder", holder)
+    await record_admin_action(db, message.from_user, "👤 Karta egasi yangilandi")
     await state.clear()
     await message.answer("✅ Karta egasi saqlandi.", reply_markup=manual_payment_back_markup())
 
@@ -1393,6 +1455,7 @@ async def admin_manual_price_save(message: Message, state: FSMContext, db: Datab
     if not digits or not 1000 <= int(digits) <= 100000000:
         return await message.answer("1 000 dan 100 000 000 so‘mgacha summa yozing.", reply_markup=cancel_kb())
     await db.set_setting("vip_price_uzs", digits)
+    await record_admin_action(db, message.from_user, "💰 VIP narxi yangilandi", f"{format_number(int(digits))} so‘m")
     await state.clear()
     await message.answer("✅ VIP narxi saqlandi.", reply_markup=manual_payment_back_markup())
 
@@ -1412,6 +1475,7 @@ async def admin_manual_days_save(message: Message, state: FSMContext, db: Databa
     if not message.text.isdigit() or not 1 <= int(message.text) <= 3650:
         return await message.answer("1 dan 3650 gacha kun yozing.", reply_markup=cancel_kb())
     await db.set_setting("vip_days", message.text)
+    await record_admin_action(db, message.from_user, "⏳ VIP muddati yangilandi", f"{message.text} kun")
     await state.clear()
     await message.answer("✅ VIP muddati saqlandi.", reply_markup=manual_payment_back_markup())
 
@@ -1431,6 +1495,7 @@ async def admin_manual_payment_approve(
         return await call.answer("Bu chek oldin ko‘rib chiqilgan.", show_alert=True)
     settings = await db.manual_payment_settings()
     vip = await db.grant_vip(payment["user_id"], settings["vip_days"])
+    await record_admin_action(db, call.from_user, "✅ To‘lov cheki tasdiqlandi", f"Foydalanuvchi ID: {payment['user_id']}")
     expires = vip["expires_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
     await call.message.edit_caption(
         caption=(call.message.caption or "") + f"\n\n✅ <b>TASDIQLANDI</b>\nVIP: {expires} gacha",
@@ -1461,6 +1526,7 @@ async def admin_manual_payment_reject(
     payment = await db.review_manual_payment(payment_id, "rejected")
     if not payment:
         return await call.answer("Bu chek oldin ko‘rib chiqilgan.", show_alert=True)
+    await record_admin_action(db, call.from_user, "❌ To‘lov cheki rad etildi", f"Foydalanuvchi ID: {payment['user_id']}")
     await call.message.edit_caption(
         caption=(call.message.caption or "") + "\n\n❌ <b>RAD ETILDI</b>",
         reply_markup=None,
@@ -1493,6 +1559,7 @@ async def add_movie_save(message: Message, state: FSMContext, db: Database, admi
         movie = await db.add_movie(title, emoji)
     except asyncpg.UniqueViolationError:
         return await message.answer("Bu nomdagi kino oldin qo‘shilgan. Boshqa nom yozing:", reply_markup=cancel_kb())
+    await record_admin_action(db, message.from_user, "🎬 Yangi kino qo‘shildi", f"{movie['emoji']} {movie['title']}")
     await state.update_data(movie_id=movie["id"], movie_label=f"{movie['emoji']} {movie['title']}")
     await state.set_state(AdminFlow.movie_poster)
     await message.answer(
@@ -1600,6 +1667,7 @@ async def add_ep_video(
     if not is_admin(message.from_user.id, admin_id): return
     data = await state.get_data()
     await db.set_episode_video(data["episode_id"], message.video.file_id, message.video.file_unique_id)
+    await record_admin_action(db, message.from_user, "▶️ Qism videosi saqlandi", f"{data['episode_number']}-QISM")
     await state.clear()
     await message.answer(f"✅ {data['episode_number']}-QISM videosi saqlandi va foydalanuvchilarga ochildi.", reply_markup=admin_menu())
     ep = await db.episode(data["episode_id"])
@@ -1679,6 +1747,7 @@ async def bulk_video_save(message: Message, state: FSMContext, db: Database, adm
     await db.upsert_episode(
         data["movie_id"], number, message.video.file_id, message.video.file_unique_id
     )
+    await record_admin_action(db, message.from_user, "📚 Ketma-ket qism yuklandi", f"{number}-QISM")
     uploaded_count = data["uploaded_count"] + 1
     await state.update_data(next_episode_number=number + 1, uploaded_count=uploaded_count)
     await message.answer(
@@ -1752,6 +1821,7 @@ async def rename_movie_save(message: Message, state: FSMContext, db: Database, a
     data = await state.get_data()
     try:
         await db.rename_movie(data["movie_id"], message.text)
+        await record_admin_action(db, message.from_user, "✏️ Kino nomi o‘zgartirildi", message.text.strip())
     except asyncpg.UniqueViolationError:
         return await message.answer("Bu nom band. Boshqa nom yozing:", reply_markup=cancel_kb())
     await state.clear()
@@ -1782,6 +1852,7 @@ async def edit_poster_save(message: Message, state: FSMContext, db: Database, ad
     if not is_admin(message.from_user.id, admin_id): return
     data = await state.get_data()
     await db.set_movie_poster(data["movie_id"], message.photo[-1].file_id)
+    await record_admin_action(db, message.from_user, "🖼 Kino posteri yangilandi", f"Kino ID: {data['movie_id']}")
     await state.clear()
     await message.answer("✅ Kino posteri yangilandi.", reply_markup=admin_menu())
 
@@ -1826,6 +1897,7 @@ async def edit_description_save(message: Message, state: FSMContext, db: Databas
         return await message.answer("Tavsif juda uzun. 700 ta belgidan qisqaroq yozing:", reply_markup=cancel_kb())
     data = await state.get_data()
     await db.set_movie_description(data["movie_id"], text)
+    await record_admin_action(db, message.from_user, "📝 Kino tavsifi yangilandi", f"Kino ID: {data['movie_id']}")
     await state.clear()
     await message.answer("✅ Kino tavsifi yangilandi.", reply_markup=admin_menu())
 
@@ -1875,6 +1947,7 @@ async def renumber_save(message: Message, state: FSMContext, db: Database, admin
     data = await state.get_data()
     try:
         await db.set_episode_number(data["episode_id"], int(message.text))
+        await record_admin_action(db, message.from_user, "🔢 Qism raqami o‘zgartirildi", f"Yangi raqam: {message.text}")
     except asyncpg.UniqueViolationError:
         return await message.answer("Bu raqam shu kinoda mavjud.", reply_markup=cancel_kb())
     await state.clear()
@@ -1905,6 +1978,7 @@ async def replace_video_save(message: Message, state: FSMContext, db: Database, 
     if not is_admin(message.from_user.id, admin_id): return
     data = await state.get_data()
     await db.set_episode_video(data["episode_id"], message.video.file_id, message.video.file_unique_id)
+    await record_admin_action(db, message.from_user, "📹 Qism videosi almashtirildi", f"Qism ID: {data['episode_id']}")
     await state.clear()
     await message.answer("✅ Video saqlandi/almashtirildi.", reply_markup=admin_menu())
 
@@ -1938,7 +2012,10 @@ async def confirm_delete_movie(call: CallbackQuery, db: Database):
 
 @router.callback_query(F.data.startswith("adm:dodelmovie:"))
 async def do_delete_movie(call: CallbackQuery, db: Database):
-    await db.delete_movie(int(call.data.rsplit(":", 1)[1]))
+    movie_id = int(call.data.rsplit(":", 1)[1])
+    movie = await db.movie(movie_id)
+    await db.delete_movie(movie_id)
+    await record_admin_action(db, call.from_user, "🗑 Kino o‘chirildi", movie["title"] if movie else f"Kino ID: {movie_id}")
     await safe_edit(call, "✅ Kino va qismlari o‘chirildi.", admin_menu())
 
 
@@ -1966,7 +2043,11 @@ async def confirm_delete_ep(call: CallbackQuery, db: Database):
 
 @router.callback_query(F.data.startswith("adm:dodeleteepisode:"))
 async def do_delete_ep(call: CallbackQuery, db: Database):
-    await db.delete_episode(int(call.data.rsplit(":", 1)[1]))
+    episode_id = int(call.data.rsplit(":", 1)[1])
+    episode = await db.episode(episode_id)
+    await db.delete_episode(episode_id)
+    details = f"{episode['movie_title']} — {episode['episode_number']}-QISM" if episode else f"Qism ID: {episode_id}"
+    await record_admin_action(db, call.from_user, "🗑 Qism o‘chirildi", details)
     await safe_edit(call, "✅ Qism o‘chirildi.", admin_menu())
 
 

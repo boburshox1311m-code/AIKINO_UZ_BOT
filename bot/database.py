@@ -162,6 +162,16 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS broadcast_history_created_idx
                 ON broadcast_history(created_at DESC);
+            CREATE TABLE IF NOT EXISTS admin_action_history (
+                id BIGSERIAL PRIMARY KEY,
+                admin_id BIGINT NOT NULL,
+                admin_name TEXT,
+                action TEXT NOT NULL,
+                details TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS admin_action_history_created_idx
+                ON admin_action_history(created_at DESC);
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -748,6 +758,32 @@ class Database:
             WHERE id=$1 AND status='pending'
             RETURNING *
         """, request_id, status)
+
+    async def add_admin_action(
+        self,
+        admin_id: int,
+        admin_name: str | None,
+        action: str,
+        details: str | None = None,
+    ):
+        assert self.pool
+        return await self.pool.execute("""
+            INSERT INTO admin_action_history(admin_id, admin_name, action, details)
+            VALUES($1, $2, $3, $4)
+        """, admin_id, admin_name, action, details)
+
+    async def admin_action_count(self) -> int:
+        assert self.pool
+        return await self.pool.fetchval("SELECT COUNT(*) FROM admin_action_history")
+
+    async def admin_actions(self, offset: int = 0, limit: int = 10):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT id, admin_id, admin_name, action, details, created_at
+            FROM admin_action_history
+            ORDER BY created_at DESC, id DESC
+            OFFSET $1 LIMIT $2
+        """, offset, limit)
 
     async def set_episode_number(self, episode_id: int, number: int):
         assert self.pool
