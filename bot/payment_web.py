@@ -40,6 +40,17 @@ background:linear-gradient(135deg,#f7d575,#b97815); color:#1b1204; font-size:17p
     return web.Response(text=html, content_type="text/html", status=status)
 
 
+async def health_check(request: web.Request) -> web.Response:
+    db: Database = request.app["db"]
+    try:
+        assert db.pool
+        await db.pool.fetchval("SELECT 1")
+    except Exception:
+        logging.getLogger(__name__).exception("Health check failed")
+        return web.json_response({"status": "unhealthy", "database": "error"}, status=503)
+    return web.json_response({"status": "ok", "database": "ok"})
+
+
 async def payment_page(request: web.Request) -> web.Response:
     db: Database = request.app["db"]
     settings = await db.manual_payment_settings()
@@ -130,6 +141,7 @@ async def start_payment_web(bot: Bot, db: Database, admin_id: int):
     app["db"] = db
     app["admin_id"] = admin_id
     app.router.add_get("/", payment_page)
+    app.router.add_get("/health", health_check)
     app.router.add_post("/receipt", receipt_upload)
     runner = web.AppRunner(app)
     await runner.setup()
