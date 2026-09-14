@@ -66,8 +66,10 @@ class Database:
             CREATE TABLE IF NOT EXISTS bot_users (
                 user_id BIGINT PRIMARY KEY,
                 first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                is_active BOOLEAN NOT NULL DEFAULT TRUE
             );
+            ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
             CREATE INDEX IF NOT EXISTS bot_users_last_seen_idx
                 ON bot_users(last_seen_at DESC);
             CREATE TABLE IF NOT EXISTS episode_views (
@@ -278,8 +280,22 @@ class Database:
         return await self.pool.execute("""
             INSERT INTO bot_users(user_id, first_seen_at, last_seen_at)
             VALUES($1, NOW(), NOW())
-            ON CONFLICT(user_id) DO UPDATE SET last_seen_at=NOW()
+            ON CONFLICT(user_id) DO UPDATE SET last_seen_at=NOW(), is_active=TRUE
         """, user_id)
+
+    async def broadcast_user_ids(self, admin_id: int):
+        assert self.pool
+        return await self.pool.fetch(
+            "SELECT user_id FROM bot_users WHERE user_id<>$1 AND is_active=TRUE ORDER BY user_id",
+            admin_id,
+        )
+
+    async def mark_user_inactive(self, user_id: int):
+        assert self.pool
+        return await self.pool.execute(
+            "UPDATE bot_users SET is_active=FALSE WHERE user_id=$1",
+            user_id,
+        )
 
     async def record_episode_view(self, user_id: int, episode_id: int):
         assert self.pool

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import math
 import re
 import logging
@@ -9,7 +10,7 @@ from typing import Any, Awaitable, Callable
 import asyncpg
 from aiogram import BaseMiddleware, Bot, F, Router
 from aiogram.enums import ChatMemberStatus
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -109,6 +110,8 @@ class AdminFlow(StatesGroup):
     update_movie_description = State()
     renumber_episode = State()
     replace_video = State()
+    broadcast_content = State()
+    broadcast_ready = State()
 
 
 class SearchFlow(StatesGroup):
@@ -163,7 +166,25 @@ def admin_menu():
         [InlineKeyboardButton(text="🗑 Kino/qismni o‘chirish", callback_data="adm:delete")],
         [InlineKeyboardButton(text="📋 Kinolar ro‘yxati", callback_data="adm:list")],
         [InlineKeyboardButton(text="📊 Statistika", callback_data="adm:stats")],
+        [InlineKeyboardButton(text="📣 Hammaga xabar yuborish", callback_data="adm:broadcast")],
         [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+    ])
+
+
+def broadcast_link_markup(bot_username: str, enabled: bool):
+    if not enabled:
+        return None
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🎬 Botni ochish", url=f"https://t.me/{bot_username}")
+    ]])
+
+
+def broadcast_confirm_markup(link_enabled: bool):
+    link_status = "✅ Bot tugmasi yoqilgan" if link_enabled else "➕ Bot tugmasini qo‘shish"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=link_status, callback_data="adm:broadcast:toggle")],
+        [InlineKeyboardButton(text="✅ Hammaga yuborish", callback_data="adm:broadcast:send")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")],
     ])
 
 
@@ -527,6 +548,146 @@ async def admin_statistics(call: CallbackQuery, db: Database, admin_id: int):
         [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin")],
     ])
     await safe_edit(call, text, kb)
+
+
+@router.callback_query(F.data == "adm:broadcast")
+async def broadcast_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.clear()
+    await state.set_state(AdminFlow.broadcast_content)
+    await safe_edit(
+        call,
+        "📣 <b>Hammaga xabar yuborish</b>\n\n"
+        "Yubormoqchi bo‘lgan <b>matn, rasm yoki videoni</b> shu yerga jo‘nating. "
+        "Rasm va videoga izoh yozishingiz ham mumkin.\n\n"
+        "Keyingi bosqichda xabarni ko‘rib, tasdiqlaysiz.",
+        cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.broadcast_content)
+async def broadcast_preview(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    admin_id: int,
+):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    if not (message.text or message.photo or message.video):
+        return await message.answer(
+            "Faqat <b>matn, rasm yoki video</b> yuboring.",
+            reply_markup=cancel_kb(),
+        )
+
+    me = await bot.get_me()
+    link_enabled = True
+    preview = await bot.copy_message(
+        chat_id=admin_id,
+        from_chat_id=message.chat.id,
+        message_id=message.message_id,
+        reply_markup=broadcast_link_markup(me.username, link_enabled),
+        protect_content=True,
+    )
+    await state.update_data(
+        source_chat_id=message.chat.id,
+        source_message_id=message.message_id,
+        preview_message_id=preview.message_id,
+        bot_username=me.username,
+        link_enabled=link_enabled,
+    )
+    await state.set_state(AdminFlow.broadcast_ready)
+    await message.answer(
+        "👆 <b>Xabar ko‘rinishi</b>\n\n"
+        "Bot tugmasini qoldiring yoki olib tashlang. Tayyor bo‘lsa, yuborishni tasdiqlang.",
+        reply_markup=broadcast_confirm_markup(link_enabled),
+    )
+
+
+@router.callback_query(AdminFlow.broadcast_ready, F.data == "adm:broadcast:toggle")
+async def broadcast_toggle_link(
+    call: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    data = await state.get_data()
+    link_enabled = not data.get("link_enabled", True)
+    await state.update_data(link_enabled=link_enabled)
+    try:
+        await bot.edit_message_reply_markup(
+            chat_id=admin_id,
+            message_id=data["preview_message_id"],
+            reply_markup=broadcast_link_markup(data["bot_username"], link_enabled),
+        )
+    except TelegramBadRequest:
+        pass
+    await call.message.edit_reply_markup(reply_markup=broadcast_confirm_markup(link_enabled))
+    await call.answer("Bot tugmasi yoqildi." if link_enabled else "Bot tugmasi olib tashlandi.")
+
+
+@router.callback_query(AdminFlow.broadcast_ready, F.data == "adm:broadcast:send")
+async def broadcast_send(
+    call: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    db: Database,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+
+    data = await state.get_data()
+    await state.clear()
+    recipients = await db.broadcast_user_ids(admin_id)
+    await call.answer()
+    await call.message.edit_text(
+        f"📤 Xabar <b>{format_number(len(recipients))} ta foydalanuvchiga</b> yuborilmoqda…"
+    )
+
+    sent = 0
+    failed = 0
+    markup = broadcast_link_markup(data["bot_username"], data.get("link_enabled", True))
+    for row in recipients:
+        user_id = row["user_id"]
+        try:
+            await bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=data["source_chat_id"],
+                message_id=data["source_message_id"],
+                reply_markup=markup,
+                protect_content=True,
+            )
+            sent += 1
+        except TelegramRetryAfter as exc:
+            await asyncio.sleep(exc.retry_after)
+            try:
+                await bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=data["source_chat_id"],
+                    message_id=data["source_message_id"],
+                    reply_markup=markup,
+                    protect_content=True,
+                )
+                sent += 1
+            except TelegramAPIError:
+                failed += 1
+        except (TelegramForbiddenError, TelegramBadRequest):
+            failed += 1
+            await db.mark_user_inactive(user_id)
+        except TelegramAPIError:
+            failed += 1
+        await asyncio.sleep(0.055)
+
+    await call.message.edit_text(
+        "✅ <b>Tarqatish yakunlandi.</b>\n\n"
+        f"📨 Yuborildi: <b>{format_number(sent)}</b>\n"
+        f"⚠️ Yuborilmadi: <b>{format_number(failed)}</b>",
+        reply_markup=admin_menu(),
+    )
 
 
 @router.callback_query(F.data == "adm:addmovie")
