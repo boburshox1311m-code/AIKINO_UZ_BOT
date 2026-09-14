@@ -186,6 +186,7 @@ def admin_menu():
         [InlineKeyboardButton(text="📋 Kinolar ro‘yxati", callback_data="adm:list")],
         [InlineKeyboardButton(text="📊 Statistika", callback_data="adm:stats")],
         [InlineKeyboardButton(text="📣 Hammaga xabar yuborish", callback_data="adm:broadcast")],
+        [InlineKeyboardButton(text="📜 Tarqatmalar tarixi", callback_data="adm:broadcasts:0")],
         [InlineKeyboardButton(text="📩 Kino so‘rovlari", callback_data="adm:requests:0")],
         [InlineKeyboardButton(text="💎 VIP boshqaruvi", callback_data="adm:vip")],
         [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
@@ -774,6 +775,8 @@ async def broadcast_preview(
         preview_message_id=preview.message_id,
         bot_username=me.username,
         link_enabled=link_enabled,
+        content_type="text" if message.text else ("photo" if message.photo else "video"),
+        preview_text=(message.text or message.caption or ("Rasm" if message.photo else "Video"))[:500],
     )
     await state.set_state(AdminFlow.broadcast_ready)
     await message.answer(
@@ -821,6 +824,15 @@ async def broadcast_send(
     data = await state.get_data()
     await state.clear()
     recipients = await db.broadcast_user_ids(admin_id)
+    history = await db.create_broadcast_history(
+        admin_id=admin_id,
+        source_chat_id=data["source_chat_id"],
+        source_message_id=data["source_message_id"],
+        content_type=data.get("content_type", "unknown"),
+        preview_text=data.get("preview_text"),
+        link_enabled=data.get("link_enabled", True),
+        total_recipients=len(recipients),
+    )
     await call.answer()
     await call.message.edit_text(
         f"📤 Xabar <b>{format_number(len(recipients))} ta foydalanuvchiga</b> yuborilmoqda…"
@@ -860,11 +872,121 @@ async def broadcast_send(
             failed += 1
         await asyncio.sleep(0.055)
 
+    await db.finish_broadcast_history(history["id"], sent, failed)
     await call.message.edit_text(
         "✅ <b>Tarqatish yakunlandi.</b>\n\n"
         f"📨 Yuborildi: <b>{format_number(sent)}</b>\n"
         f"⚠️ Yuborilmadi: <b>{format_number(failed)}</b>",
         reply_markup=admin_menu(),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:broadcasts:"))
+async def admin_broadcast_history(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    page = int(call.data.rsplit(":", 1)[1])
+    count = await db.broadcast_history_count()
+    page = max(0, min(page, max(0, math.ceil(count / PAGE_REQUESTS) - 1)))
+    items = await db.broadcast_history(page * PAGE_REQUESTS, PAGE_REQUESTS)
+    builder = InlineKeyboardBuilder()
+    for item in items:
+        created = item["created_at"].astimezone(LONDON_TZ).strftime("%d.%m %H:%M")
+        status = "✅" if item["completed_at"] else "⏳"
+        builder.button(
+            text=f"{status} {created} — {item['sent_count']}/{item['total_recipients']}",
+            callback_data=f"adm:broadcastitem:{item['id']}:{page}",
+        )
+    builder.adjust(1)
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"adm:broadcasts:{page-1}"))
+    if (page + 1) * PAGE_REQUESTS < count:
+        nav.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"adm:broadcasts:{page+1}"))
+    if nav:
+        builder.row(*nav)
+    builder.row(InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin"))
+    text = (
+        f"📜 <b>Tarqatmalar tarixi</b> — {format_number(count)} ta\n\nTarqatmani tanlang:"
+        if items else
+        "📜 <b>Tarqatmalar tarixi</b>\n\nHozircha tarqatmalar yo‘q."
+    )
+    await safe_edit(call, text, builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("adm:broadcastitem:"))
+async def admin_broadcast_history_detail(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    _, _, history_id, page = call.data.split(":")
+    item = await db.broadcast_history_item(int(history_id))
+    if not item:
+        return await call.answer("Tarqatma topilmadi.", show_alert=True)
+    created = item["created_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+    completed = (
+        item["completed_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+        if item["completed_at"] else "Jarayon yakunlanmagan"
+    )
+    preview = escape(item["preview_text"] or "Mazmun mavjud emas")
+    if len(preview) > 500:
+        preview = preview[:497] + "…"
+    type_names = {"text": "Matn", "photo": "Rasm", "video": "Video"}
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🗑 Tarixdan o‘chirish",
+            callback_data=f"adm:broadcastdelete:{item['id']}:{page}",
+        )],
+        [InlineKeyboardButton(text="⬅️ Tarix", callback_data=f"adm:broadcasts:{page}")],
+    ])
+    await safe_edit(
+        call,
+        "📜 <b>Tarqatma tafsilotlari</b>\n\n"
+        f"🕒 Boshlangan: <b>{created}</b>\n"
+        f"✅ Yakunlangan: <b>{completed}</b>\n"
+        f"📄 Turi: <b>{type_names.get(item['content_type'], item['content_type'])}</b>\n"
+        f"🔗 Bot tugmasi: <b>{'Bor' if item['link_enabled'] else 'Yo‘q'}</b>\n"
+        f"👥 Qabul qiluvchilar: <b>{format_number(item['total_recipients'])}</b>\n"
+        f"📨 Yuborildi: <b>{format_number(item['sent_count'])}</b>\n"
+        f"⚠️ Yuborilmadi: <b>{format_number(item['failed_count'])}</b>\n\n"
+        f"📝 <b>Qisqa mazmun:</b>\n{preview}",
+        kb,
+    )
+
+
+@router.callback_query(F.data.startswith("adm:broadcastdelete:"))
+async def admin_broadcast_history_delete_confirm(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    _, _, history_id, page = call.data.split(":")
+    if not await db.broadcast_history_item(int(history_id)):
+        return await call.answer("Tarqatma topilmadi.", show_alert=True)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="✅ Ha, tarixdan o‘chirish",
+            callback_data=f"adm:broadcastdodelete:{history_id}:{page}",
+        )],
+        [InlineKeyboardButton(
+            text="❌ Yo‘q",
+            callback_data=f"adm:broadcastitem:{history_id}:{page}",
+        )],
+    ])
+    await safe_edit(call, "⚠️ Ushbu tarqatma tarix yozuvi o‘chirilsinmi?", kb)
+
+
+@router.callback_query(F.data.startswith("adm:broadcastdodelete:"))
+async def admin_broadcast_history_delete(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    _, _, history_id, page = call.data.split(":")
+    deleted = await db.delete_broadcast_history(int(history_id))
+    if not deleted:
+        return await call.answer("Tarqatma topilmadi.", show_alert=True)
+    await safe_edit(
+        call,
+        "✅ Tarqatma tarixdan o‘chirildi.",
+        InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⬅️ Tarqatmalar tarixi", callback_data=f"adm:broadcasts:{page}")
+        ]]),
     )
 
 
