@@ -4,6 +4,7 @@ import asyncio
 import math
 import re
 import logging
+import time
 from html import escape
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
@@ -15,7 +16,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramFor
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import Database
@@ -25,6 +26,8 @@ PAGE_MOVIES = 8
 PAGE_EPISODES = 10
 PAGE_REQUESTS = 10
 LONDON_TZ = ZoneInfo("Europe/London")
+ERROR_ALERT_COOLDOWN = 300
+_last_error_alerts: dict[str, float] = {}
 
 
 def subscription_kb(channel_id: str, target: str = "home"):
@@ -1843,6 +1846,54 @@ async def confirm_delete_ep(call: CallbackQuery, db: Database):
 async def do_delete_ep(call: CallbackQuery, db: Database):
     await db.delete_episode(int(call.data.rsplit(":", 1)[1]))
     await safe_edit(call, "✅ Qism o‘chirildi.", admin_menu())
+
+
+def redact_error_message(value: str) -> str:
+    value = re.sub(r"postgres(?:ql)?://\\S+", "[DATABASE_URL REDACTED]", value, flags=re.I)
+    value = re.sub(r"\\b\\d{8,12}:[A-Za-z0-9_-]{20,}\\b", "[BOT_TOKEN REDACTED]", value)
+    value = re.sub(
+        r"(?i)(token|password|secret|authorization|database_url)\\s*[=:]\\s*\\S+",
+        r"\\1=[REDACTED]",
+        value,
+    )
+    return value[:500]
+
+
+@router.error()
+async def global_error_handler(event: ErrorEvent, bot: Bot, admin_id: int):
+    error = event.exception
+    logging.getLogger(__name__).exception(
+        "Unhandled bot update error",
+        exc_info=(type(error), error, error.__traceback__),
+    )
+    raw_message = redact_error_message(str(error) or "Tafsilot mavjud emas")
+    signature = f"{type(error).__name__}:{raw_message}"
+    now = time.monotonic()
+    if now - _last_error_alerts.get(signature, 0) < ERROR_ALERT_COOLDOWN:
+        return True
+    _last_error_alerts[signature] = now
+    update = event.update
+    source = (
+        getattr(update, "message", None)
+        or getattr(update, "callback_query", None)
+        or getattr(update, "edited_message", None)
+    )
+    user = getattr(source, "from_user", None)
+    user_line = f"\n👤 Foydalanuvchi ID: <code>{user.id}</code>" if user else ""
+    timestamp = __import__("datetime").datetime.now(LONDON_TZ).strftime("%d.%m.%Y %H:%M:%S")
+    try:
+        await bot.send_message(
+            admin_id,
+            "🚨 <b>AIKINO_UZ_BOT xatosi</b>\n\n"
+            f"🕒 Vaqt: <b>{timestamp}</b>\n"
+            f"⚠️ Turi: <code>{escape(type(error).__name__)}</code>"
+            f"{user_line}\n"
+            f"📝 Xabar: <code>{escape(raw_message)}</code>\n\n"
+            "Bir xil xato 5 daqiqa ichida qayta yuborilmaydi.",
+        )
+    except TelegramAPIError:
+        logging.getLogger(__name__).exception("Admin error alert could not be delivered")
+    return True
 
 
 @router.message()
