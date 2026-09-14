@@ -4,6 +4,7 @@ import logging
 from html import escape
 
 from aiohttp import web
+from aiohttp.web_request import FileField
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
@@ -82,7 +83,7 @@ async def receipt_upload(request: web.Request) -> web.Response:
         receipt = form.get("receipt")
     except (ValueError, TypeError, web.HTTPException):
         return page("Xatolik", "<h1>Ma’lumot noto‘g‘ri</h1><p>Telegram ID va chekni qayta tekshiring.</p>", 400)
-    if user_id < 1 or not isinstance(receipt, web.FileField):
+    if user_id < 1 or not isinstance(receipt, FileField):
         return page("Xatolik", "<h1>Ma’lumot yetarli emas</h1><p>Telegram ID va chek rasmi majburiy.</p>", 400)
     data = receipt.file.read(8 * 1024 * 1024 + 1)
     if not data or len(data) > 8 * 1024 * 1024:
