@@ -118,6 +118,10 @@ class AdminFlow(StatesGroup):
     vip_user_id = State()
     vip_days = State()
     vip_revoke_id = State()
+    manual_card_number = State()
+    manual_card_holder = State()
+    manual_price_uzs = State()
+    manual_vip_days = State()
 
 
 class SearchFlow(StatesGroup):
@@ -198,6 +202,7 @@ def vip_admin_menu():
         [InlineKeyboardButton(text="➖ VIPni bekor qilish", callback_data="adm:viprevoke")],
         [InlineKeyboardButton(text="🎬 VIP kinolarni belgilash", callback_data="adm:vipmovies")],
         [InlineKeyboardButton(text="👥 Faol VIP ro‘yxati", callback_data="adm:viplist")],
+        [InlineKeyboardButton(text="💳 Karta to‘lov sozlamalari", callback_data="adm:manualpay")],
         [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin")],
     ])
 
@@ -1129,6 +1134,221 @@ async def admin_vip_list(call: CallbackQuery, db: Database, admin_id: int):
     if not users:
         lines.append("\n\nHozircha faol VIP foydalanuvchilar yo‘q.")
     await safe_edit(call, "".join(lines), vip_admin_menu())
+
+
+def manual_payment_back_markup():
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⬅️ Karta to‘lov sozlamalari", callback_data="adm:manualpay")
+    ]])
+
+
+async def render_manual_payment_admin(
+    call: CallbackQuery,
+    db: Database,
+    payment_url: str | None,
+):
+    settings = await db.manual_payment_settings()
+    status = "✅ Yoqilgan" if settings["enabled"] else "⛔️ O‘chiq"
+    digits = "".join(ch for ch in settings["card_number"] if ch.isdigit())
+    grouped = " ".join(digits[i:i + 4] for i in range(0, len(digits), 4)) or "Kiritilmagan"
+    holder = settings["card_holder"] or "Kiritilmagan"
+    rows = [
+        [InlineKeyboardButton(
+            text="⛔️ Karta to‘lovini o‘chirish" if settings["enabled"] else "✅ Karta to‘lovini yoqish",
+            callback_data="adm:manualtoggle",
+        )],
+        [InlineKeyboardButton(text="💳 Karta raqamini o‘zgartirish", callback_data="adm:manualcard")],
+        [InlineKeyboardButton(text="👤 Karta egasini o‘zgartirish", callback_data="adm:manualholder")],
+        [InlineKeyboardButton(text="💰 VIP narxini o‘zgartirish", callback_data="adm:manualprice")],
+        [InlineKeyboardButton(text="⏳ VIP muddatini o‘zgartirish", callback_data="adm:manualdays")],
+    ]
+    if payment_url:
+        rows.append([InlineKeyboardButton(text="🌐 To‘lov sahifasini ochish", url=payment_url)])
+    rows.append([InlineKeyboardButton(text="⬅️ VIP boshqaruvi", callback_data="adm:vip")])
+    await safe_edit(
+        call,
+        "💳 <b>Karta to‘lov sozlamalari</b>\n\n"
+        f"Holati: <b>{status}</b>\n"
+        f"Karta: <code>{escape(grouped)}</code>\n"
+        f"Karta egasi: <b>{escape(holder)}</b>\n"
+        f"Narx: <b>{format_number(settings['price_uzs'])} so‘m</b>\n"
+        f"VIP muddati: <b>{settings['vip_days']} kun</b>\n\n"
+        "Chek kelganda bank ilovasida pul tushganini tekshirib tasdiqlang.",
+        InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@router.callback_query(F.data == "adm:manualpay")
+async def admin_manual_payment_panel(
+    call: CallbackQuery,
+    state: FSMContext,
+    db: Database,
+    admin_id: int,
+    payment_url: str | None,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.clear()
+    await render_manual_payment_admin(call, db, payment_url)
+
+
+@router.callback_query(F.data == "adm:manualtoggle")
+async def admin_manual_payment_toggle(
+    call: CallbackQuery,
+    db: Database,
+    admin_id: int,
+    payment_url: str | None,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    settings = await db.manual_payment_settings()
+    if not settings["enabled"] and (not settings["card_number"] or not settings["card_holder"]):
+        return await call.answer("Avval karta raqami va karta egasini kiriting.", show_alert=True)
+    await db.set_setting("manual_payments_enabled", "false" if settings["enabled"] else "true")
+    await render_manual_payment_admin(call, db, payment_url)
+
+
+@router.callback_query(F.data == "adm:manualcard")
+async def admin_manual_card_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.set_state(AdminFlow.manual_card_number)
+    await safe_edit(
+        call,
+        "💳 Karta raqamini yozing.\n\nFaqat Uzcard/Humo karta raqami; CVV, muddat yoki SMS kod yubormang.",
+        cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.manual_card_number, F.text)
+async def admin_manual_card_save(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    digits = "".join(ch for ch in message.text if ch.isdigit())
+    if not 16 <= len(digits) <= 19:
+        return await message.answer("Karta raqamini to‘g‘ri kiriting (16–19 ta raqam).", reply_markup=cancel_kb())
+    await db.set_setting("manual_card_number", digits)
+    await state.clear()
+    await message.answer("✅ Karta raqami saqlandi.", reply_markup=manual_payment_back_markup())
+
+
+@router.callback_query(F.data == "adm:manualholder")
+async def admin_manual_holder_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.set_state(AdminFlow.manual_card_holder)
+    await safe_edit(call, "👤 Karta egasining ism-familiyasini yozing:", cancel_kb())
+
+
+@router.message(AdminFlow.manual_card_holder, F.text)
+async def admin_manual_holder_save(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    holder = message.text.strip()
+    if not 2 <= len(holder) <= 80:
+        return await message.answer("Ism-familiya 2–80 ta belgi bo‘lsin.", reply_markup=cancel_kb())
+    await db.set_setting("manual_card_holder", holder)
+    await state.clear()
+    await message.answer("✅ Karta egasi saqlandi.", reply_markup=manual_payment_back_markup())
+
+
+@router.callback_query(F.data == "adm:manualprice")
+async def admin_manual_price_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.set_state(AdminFlow.manual_price_uzs)
+    await safe_edit(call, "💰 VIP narxini so‘mda yozing. Masalan: <code>50000</code>", cancel_kb())
+
+
+@router.message(AdminFlow.manual_price_uzs, F.text)
+async def admin_manual_price_save(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    digits = "".join(ch for ch in message.text if ch.isdigit())
+    if not digits or not 1000 <= int(digits) <= 100000000:
+        return await message.answer("1 000 dan 100 000 000 so‘mgacha summa yozing.", reply_markup=cancel_kb())
+    await db.set_setting("vip_price_uzs", digits)
+    await state.clear()
+    await message.answer("✅ VIP narxi saqlandi.", reply_markup=manual_payment_back_markup())
+
+
+@router.callback_query(F.data == "adm:manualdays")
+async def admin_manual_days_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.set_state(AdminFlow.manual_vip_days)
+    await safe_edit(call, "⏳ VIP necha kun ishlashini yozing. Masalan: <code>30</code>", cancel_kb())
+
+
+@router.message(AdminFlow.manual_vip_days, F.text)
+async def admin_manual_days_save(message: Message, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    if not message.text.isdigit() or not 1 <= int(message.text) <= 3650:
+        return await message.answer("1 dan 3650 gacha kun yozing.", reply_markup=cancel_kb())
+    await db.set_setting("vip_days", message.text)
+    await state.clear()
+    await message.answer("✅ VIP muddati saqlandi.", reply_markup=manual_payment_back_markup())
+
+
+@router.callback_query(F.data.startswith("adm:payapprove:"))
+async def admin_manual_payment_approve(
+    call: CallbackQuery,
+    db: Database,
+    bot: Bot,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    payment_id = int(call.data.rsplit(":", 1)[1])
+    payment = await db.review_manual_payment(payment_id, "approved")
+    if not payment:
+        return await call.answer("Bu chek oldin ko‘rib chiqilgan.", show_alert=True)
+    settings = await db.manual_payment_settings()
+    vip = await db.grant_vip(payment["user_id"], settings["vip_days"])
+    expires = vip["expires_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+    await call.message.edit_caption(
+        caption=(call.message.caption or "") + f"\n\n✅ <b>TASDIQLANDI</b>\nVIP: {expires} gacha",
+        reply_markup=None,
+    )
+    await call.answer("VIP berildi.")
+    try:
+        await bot.send_message(
+            payment["user_id"],
+            "✅ <b>To‘lovingiz tasdiqlandi!</b>\n\n"
+            f"💎 VIP huquqi <b>{expires}</b> gacha faollashtirildi.",
+            reply_markup=main_menu(),
+        )
+    except TelegramAPIError:
+        await call.message.answer("⚠️ VIP berildi, ammo foydalanuvchiga xabar yuborilmadi.")
+
+
+@router.callback_query(F.data.startswith("adm:payreject:"))
+async def admin_manual_payment_reject(
+    call: CallbackQuery,
+    db: Database,
+    bot: Bot,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    payment_id = int(call.data.rsplit(":", 1)[1])
+    payment = await db.review_manual_payment(payment_id, "rejected")
+    if not payment:
+        return await call.answer("Bu chek oldin ko‘rib chiqilgan.", show_alert=True)
+    await call.message.edit_caption(
+        caption=(call.message.caption or "") + "\n\n❌ <b>RAD ETILDI</b>",
+        reply_markup=None,
+    )
+    await call.answer("Chek rad etildi.")
+    try:
+        await bot.send_message(
+            payment["user_id"],
+            "❌ To‘lov chekingiz tasdiqlanmadi. Iltimos, summa va chekni tekshirib admin bilan bog‘laning.",
+            reply_markup=main_menu(),
+        )
+    except TelegramAPIError:
+        pass
 
 
 @router.callback_query(F.data == "adm:addmovie")
