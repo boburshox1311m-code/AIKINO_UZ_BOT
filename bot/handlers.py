@@ -115,6 +115,7 @@ class SearchFlow(StatesGroup):
 def main_menu(is_admin=False):
     rows = [
         [InlineKeyboardButton(text="🎬 Kinolar", callback_data="movies:0")],
+        [InlineKeyboardButton(text="▶️ Tomosha qilishni davom ettirish", callback_data="continue")],
         [InlineKeyboardButton(text="🔥 Yangi qismlar", callback_data="latest")],
         [InlineKeyboardButton(text="🔎 Kino qidirish", callback_data="search")],
     ]
@@ -189,7 +190,12 @@ async def episode_markup(db: Database, ep):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def send_episode_message(message: Message, db: Database, episode_id: int):
+async def send_episode_message(
+    message: Message,
+    db: Database,
+    episode_id: int,
+    viewer_user_id: int | None = None,
+):
     ep = await db.episode(episode_id)
     if not ep or not ep["file_id"]:
         return False
@@ -201,6 +207,8 @@ async def send_episode_message(message: Message, db: Database, episode_id: int):
         supports_streaming=True,
         protect_content=True,
     )
+    if viewer_user_id is not None:
+        await db.save_watch_progress(viewer_user_id, ep["id"])
     return True
 
 
@@ -210,7 +218,7 @@ async def start(message: Message, state: FSMContext, admin_id: int, db: Database
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) == 2 and parts[1].startswith("ep_"):
         try:
-            if await send_episode_message(message, db, int(parts[1][3:])):
+            if await send_episode_message(message, db, int(parts[1][3:]), message.from_user.id):
                 return
         except ValueError:
             pass
@@ -251,7 +259,7 @@ async def check_subscription(
     target = (call.data or "subcheck:home").split(":", 1)[1]
     if re.fullmatch(r"ep_\d+", target):
         await safe_edit(call, "✅ <b>Obuna tasdiqlandi.</b>\n\nVideo ochilmoqda…")
-        if not await send_episode_message(call.message, db, int(target[3:])):
+        if not await send_episode_message(call.message, db, int(target[3:]), call.from_user.id):
             await call.message.answer("Video topilmadi.", reply_markup=main_menu())
         return
     await safe_edit(
@@ -346,8 +354,17 @@ async def send_episode(call: CallbackQuery, db: Database):
     ep = await db.episode(int(call.data.split(":")[1]))
     if not ep or not ep["file_id"]:
         return await call.answer("Video topilmadi.", show_alert=True)
-    await send_episode_message(call.message, db, ep["id"])
+    await send_episode_message(call.message, db, ep["id"], call.from_user.id)
     await call.answer()
+
+
+@router.callback_query(F.data == "continue")
+async def continue_watching(call: CallbackQuery, db: Database):
+    ep = await db.watch_progress(call.from_user.id)
+    if not ep:
+        return await call.answer("Hali hech qaysi qismni tomosha qilmagansiz.", show_alert=True)
+    await send_episode_message(call.message, db, ep["id"], call.from_user.id)
+    await call.answer(f"{ep['movie_title']} — {ep['episode_number']}-QISM ochildi")
 
 
 @router.callback_query(F.data == "latest")

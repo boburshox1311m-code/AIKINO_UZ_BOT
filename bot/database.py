@@ -41,6 +41,12 @@ class Database:
                 UNIQUE(movie_id, episode_number)
             );
             CREATE INDEX IF NOT EXISTS episodes_movie_number_idx ON episodes(movie_id, episode_number);
+            CREATE TABLE IF NOT EXISTS watch_progress (
+                user_id BIGINT PRIMARY KEY,
+                episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS watch_progress_updated_idx ON watch_progress(updated_at DESC);
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -136,6 +142,26 @@ class Database:
             FROM episodes e JOIN movies m ON m.id=e.movie_id
             WHERE e.file_id IS NOT NULL ORDER BY e.created_at DESC LIMIT $1
         """, limit)
+
+    async def save_watch_progress(self, user_id: int, episode_id: int):
+        assert self.pool
+        return await self.pool.execute("""
+            INSERT INTO watch_progress(user_id, episode_id, updated_at)
+            VALUES($1, $2, NOW())
+            ON CONFLICT(user_id) DO UPDATE SET
+                episode_id=EXCLUDED.episode_id,
+                updated_at=NOW()
+        """, user_id, episode_id)
+
+    async def watch_progress(self, user_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji
+            FROM watch_progress w
+            JOIN episodes e ON e.id=w.episode_id
+            JOIN movies m ON m.id=e.movie_id
+            WHERE w.user_id=$1 AND e.file_id IS NOT NULL
+        """, user_id)
 
     async def set_episode_number(self, episode_id: int, number: int):
         assert self.pool
