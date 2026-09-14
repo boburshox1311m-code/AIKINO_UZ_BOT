@@ -115,6 +115,9 @@ class AdminFlow(StatesGroup):
     replace_video = State()
     broadcast_content = State()
     broadcast_ready = State()
+    vip_user_id = State()
+    vip_days = State()
+    vip_revoke_id = State()
 
 
 class SearchFlow(StatesGroup):
@@ -130,6 +133,7 @@ def main_menu(is_admin=False):
         [InlineKeyboardButton(text="🎬 Kinolar", callback_data="movies:0")],
         [InlineKeyboardButton(text="▶️ Tomosha qilishni davom ettirish", callback_data="continue")],
         [InlineKeyboardButton(text="❤️ Sevimlilar", callback_data="favorites")],
+        [InlineKeyboardButton(text="💎 VIP bo‘lim", callback_data="vip:0")],
         [InlineKeyboardButton(text="🔥 Yangi qismlar", callback_data="latest")],
         [InlineKeyboardButton(text="🔎 Kino qidirish", callback_data="search")],
         [InlineKeyboardButton(text="🎬 Kino so‘rash", callback_data="requestmovie")],
@@ -176,7 +180,25 @@ def admin_menu():
         [InlineKeyboardButton(text="📊 Statistika", callback_data="adm:stats")],
         [InlineKeyboardButton(text="📣 Hammaga xabar yuborish", callback_data="adm:broadcast")],
         [InlineKeyboardButton(text="📩 Kino so‘rovlari", callback_data="adm:requests:0")],
+        [InlineKeyboardButton(text="💎 VIP boshqaruvi", callback_data="adm:vip")],
         [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+    ])
+
+
+def vip_locked_markup():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎬 Kino so‘rash", callback_data="requestmovie")],
+        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+    ])
+
+
+def vip_admin_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ VIP berish", callback_data="adm:vipadd")],
+        [InlineKeyboardButton(text="➖ VIPni bekor qilish", callback_data="adm:viprevoke")],
+        [InlineKeyboardButton(text="🎬 VIP kinolarni belgilash", callback_data="adm:vipmovies")],
+        [InlineKeyboardButton(text="👥 Faol VIP ro‘yxati", callback_data="adm:viplist")],
+        [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin")],
     ])
 
 
@@ -237,10 +259,22 @@ async def send_episode_message(
     db: Database,
     episode_id: int,
     viewer_user_id: int | None = None,
+    admin_id: int | None = None,
 ):
     ep = await db.episode(episode_id)
     if not ep or not ep["file_id"]:
         return False
+    if (
+        ep["movie_is_vip"]
+        and viewer_user_id != admin_id
+        and (viewer_user_id is None or not await db.is_vip_user(viewer_user_id))
+    ):
+        await message.answer(
+            "💎 <b>Bu kino faqat VIP foydalanuvchilar uchun.</b>\n\n"
+            "VIP huquqini olish uchun admin bilan bog‘laning.",
+            reply_markup=vip_locked_markup(),
+        )
+        return True
     caption = ep["caption"] or f"{ep['movie_emoji']} <b>{ep['movie_title']}</b> — {ep['episode_number']}-QISM"
     await message.answer_video(
         ep["file_id"],
@@ -261,7 +295,7 @@ async def start(message: Message, state: FSMContext, admin_id: int, db: Database
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) == 2 and parts[1].startswith("ep_"):
         try:
-            if await send_episode_message(message, db, int(parts[1][3:]), message.from_user.id):
+            if await send_episode_message(message, db, int(parts[1][3:]), message.from_user.id, admin_id):
                 return
         except ValueError:
             pass
@@ -302,7 +336,7 @@ async def check_subscription(
     target = (call.data or "subcheck:home").split(":", 1)[1]
     if re.fullmatch(r"ep_\d+", target):
         await safe_edit(call, "✅ <b>Obuna tasdiqlandi.</b>\n\nVideo ochilmoqda…")
-        if not await send_episode_message(call.message, db, int(target[3:]), call.from_user.id):
+        if not await send_episode_message(call.message, db, int(target[3:]), call.from_user.id, admin_id):
             await call.message.answer("Video topilmadi.", reply_markup=main_menu())
         return
     await safe_edit(
@@ -313,9 +347,9 @@ async def check_subscription(
 
 
 async def movie_keyboard(db: Database, page: int, prefix="movie", back="home"):
-    count = await db.movie_count()
+    count = await db.public_movie_count()
     page = max(0, min(page, max(0, math.ceil(count / PAGE_MOVIES) - 1)))
-    items = await db.movies(page * PAGE_MOVIES, PAGE_MOVIES)
+    items = await db.public_movies(page * PAGE_MOVIES, PAGE_MOVIES)
     b = InlineKeyboardBuilder()
     for m in items:
         b.button(text=f"{m['emoji']} {m['title']}", callback_data=f"{prefix}:{m['id']}")
@@ -336,6 +370,49 @@ async def show_movies(call: CallbackQuery, db: Database):
     page = int(call.data.split(":")[1])
     kb, count, page = await movie_keyboard(db, page)
     text = "🎬 <b>Kinolar</b>\n\nKinoni tanlang:" if count else "Hozircha kinolar qo‘shilmagan."
+    await safe_edit(call, text, kb)
+
+
+async def vip_movie_keyboard(db: Database, page: int):
+    count = await db.vip_movie_count()
+    page = max(0, min(page, max(0, math.ceil(count / PAGE_MOVIES) - 1)))
+    items = await db.vip_movies(page * PAGE_MOVIES, PAGE_MOVIES)
+    b = InlineKeyboardBuilder()
+    for movie in items:
+        b.button(text=f"💎 {movie['title']}", callback_data=f"movie:{movie['id']}")
+    b.adjust(1)
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"vip:{page-1}"))
+    if (page + 1) * PAGE_MOVIES < count:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"vip:{page+1}"))
+    if nav:
+        b.row(*nav)
+    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
+    return b.as_markup(), count, page
+
+
+@router.callback_query(F.data.startswith("vip:"))
+async def vip_movies(call: CallbackQuery, db: Database, admin_id: int):
+    vip = await db.vip_user(call.from_user.id)
+    if call.from_user.id != admin_id and not vip:
+        return await safe_edit(
+            call,
+            "💎 <b>VIP bo‘lim</b>\n\n"
+            "Sizda hozircha faol VIP huquqi yo‘q. VIP olish uchun admin bilan bog‘laning.",
+            vip_locked_markup(),
+        )
+    page = int(call.data.split(":")[1])
+    kb, count, page = await vip_movie_keyboard(db, page)
+    if call.from_user.id == admin_id:
+        expiry = "Admin uchun doim ochiq"
+    else:
+        expiry = f"VIP muddati: {vip['expires_at'].astimezone(LONDON_TZ).strftime('%d.%m.%Y %H:%M')} gacha"
+    text = (
+        f"💎 <b>VIP kinolar</b>\n\n{expiry}\n\nKinoni tanlang:"
+        if count else
+        f"💎 <b>VIP kinolar</b>\n\n{expiry}\n\nHozircha VIP kinolar qo‘shilmagan."
+    )
     await safe_edit(call, text, kb)
 
 
@@ -362,21 +439,28 @@ async def episode_keyboard(db: Database, movie_id: int, page: int, user_id: int)
 
 
 @router.callback_query(F.data.startswith("movie:"))
-async def select_movie(call: CallbackQuery, db: Database):
+async def select_movie(call: CallbackQuery, db: Database, admin_id: int):
     movie_id = int(call.data.split(":")[1])
-    await render_movie(call, db, movie_id, 0)
+    await render_movie(call, db, movie_id, 0, admin_id)
 
 
 @router.callback_query(F.data.startswith("moviepage:"))
-async def movie_page(call: CallbackQuery, db: Database):
+async def movie_page(call: CallbackQuery, db: Database, admin_id: int):
     _, movie_id, page = call.data.split(":")
-    await render_movie(call, db, int(movie_id), int(page))
+    await render_movie(call, db, int(movie_id), int(page), admin_id)
 
 
-async def render_movie(call, db, movie_id, page):
+async def render_movie(call, db, movie_id, page, admin_id):
     movie = await db.movie(movie_id)
     if not movie:
         return await safe_edit(call, "Kino topilmadi.", main_menu())
+    if movie["is_vip"] and call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
+        return await safe_edit(
+            call,
+            "💎 <b>Bu kino faqat VIP foydalanuvchilar uchun.</b>\n\n"
+            "VIP huquqini olish uchun admin bilan bog‘laning.",
+            vip_locked_markup(),
+        )
     kb, count = await episode_keyboard(db, movie_id, page, call.from_user.id)
     title = f"{escape(movie['emoji'])} <b>{escape(movie['title'])}</b>"
     description = escape(movie["description"]) if movie["description"] else ""
@@ -396,20 +480,22 @@ async def render_movie(call, db, movie_id, page):
 
 
 @router.callback_query(F.data.startswith("ep:"))
-async def send_episode(call: CallbackQuery, db: Database):
+async def send_episode(call: CallbackQuery, db: Database, admin_id: int):
     ep = await db.episode(int(call.data.split(":")[1]))
     if not ep or not ep["file_id"]:
         return await call.answer("Video topilmadi.", show_alert=True)
-    await send_episode_message(call.message, db, ep["id"], call.from_user.id)
+    await send_episode_message(call.message, db, ep["id"], call.from_user.id, admin_id)
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("favm:"))
-async def toggle_favorite_movie(call: CallbackQuery, db: Database):
+async def toggle_favorite_movie(call: CallbackQuery, db: Database, admin_id: int):
     _, movie_id, page = call.data.split(":")
     movie = await db.movie(int(movie_id))
     if not movie:
         return await call.answer("Kino topilmadi.", show_alert=True)
+    if movie["is_vip"] and call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
+        return await call.answer("Bu kino uchun faol VIP huquqi kerak.", show_alert=True)
     added = await db.toggle_movie_favorite(call.from_user.id, int(movie_id))
     kb, _ = await episode_keyboard(db, int(movie_id), int(page), call.from_user.id)
     await call.message.edit_reply_markup(reply_markup=kb)
@@ -417,11 +503,13 @@ async def toggle_favorite_movie(call: CallbackQuery, db: Database):
 
 
 @router.callback_query(F.data.startswith("fave:"))
-async def toggle_favorite_episode(call: CallbackQuery, db: Database):
+async def toggle_favorite_episode(call: CallbackQuery, db: Database, admin_id: int):
     episode_id = int(call.data.split(":")[1])
     ep = await db.episode(episode_id)
     if not ep or not ep["file_id"]:
         return await call.answer("Qism topilmadi.", show_alert=True)
+    if ep["movie_is_vip"] and call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
+        return await call.answer("Bu qism uchun faol VIP huquqi kerak.", show_alert=True)
     added = await db.toggle_episode_favorite(call.from_user.id, episode_id)
     await call.message.edit_reply_markup(reply_markup=await episode_markup(db, ep, call.from_user.id))
     await call.answer("❤️ Qism sevimlilarga qo‘shildi." if added else "Qism sevimlilardan olib tashlandi.")
@@ -438,8 +526,10 @@ async def favorites(call: CallbackQuery):
 
 
 @router.callback_query(F.data == "favorites:movies")
-async def favorite_movies(call: CallbackQuery, db: Database):
+async def favorite_movies(call: CallbackQuery, db: Database, admin_id: int):
     items = await db.favorite_movies(call.from_user.id)
+    if call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
+        items = [movie for movie in items if not movie["is_vip"]]
     b = InlineKeyboardBuilder()
     for movie in items:
         b.button(text=f"{movie['emoji']} {movie['title']}", callback_data=f"movie:{movie['id']}")
@@ -451,8 +541,10 @@ async def favorite_movies(call: CallbackQuery, db: Database):
 
 
 @router.callback_query(F.data == "favorites:episodes")
-async def favorite_episodes(call: CallbackQuery, db: Database):
+async def favorite_episodes(call: CallbackQuery, db: Database, admin_id: int):
     items = await db.favorite_episodes(call.from_user.id)
+    if call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
+        items = [episode for episode in items if not episode["movie_is_vip"]]
     b = InlineKeyboardBuilder()
     for ep in items:
         b.button(
@@ -467,11 +559,14 @@ async def favorite_episodes(call: CallbackQuery, db: Database):
 
 
 @router.callback_query(F.data == "continue")
-async def continue_watching(call: CallbackQuery, db: Database):
+async def continue_watching(call: CallbackQuery, db: Database, admin_id: int):
     ep = await db.watch_progress(call.from_user.id)
     if not ep:
         return await call.answer("Hali hech qaysi qismni tomosha qilmagansiz.", show_alert=True)
-    await send_episode_message(call.message, db, ep["id"], call.from_user.id)
+    if ep["movie_is_vip"] and call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
+        await send_episode_message(call.message, db, ep["id"], call.from_user.id, admin_id)
+        return await call.answer("Faol VIP huquqi kerak.", show_alert=True)
+    await send_episode_message(call.message, db, ep["id"], call.from_user.id, admin_id)
     await call.answer(f"{ep['movie_title']} — {ep['episode_number']}-QISM ochildi")
 
 
@@ -604,7 +699,8 @@ async def admin_statistics(call: CallbackQuery, db: Database, admin_id: int):
         "📊 <b>Bot statistikasi</b>\n\n"
         "👥 <b>Foydalanuvchilar</b>\n"
         f"• Jami: <b>{format_number(stats['total_users'])}</b>\n"
-        f"• Bugun faol: <b>{format_number(stats['today_users'])}</b>\n\n"
+        f"• Bugun faol: <b>{format_number(stats['today_users'])}</b>\n"
+        f"• Faol VIP: <b>{format_number(stats['active_vips'])}</b>\n\n"
         "▶️ <b>Qismlar ko‘rilishi</b>\n"
         f"• Jami: <b>{format_number(stats['total_views'])}</b>\n"
         f"• Bugun: <b>{format_number(stats['today_views'])}</b>\n\n"
@@ -875,6 +971,166 @@ async def admin_delete_movie_request(call: CallbackQuery, db: Database, admin_id
     )
 
 
+@router.callback_query(F.data == "adm:vip")
+async def admin_vip_panel(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.clear()
+    await safe_edit(
+        call,
+        "💎 <b>VIP boshqaruvi</b>\n\nKerakli amalni tanlang:",
+        vip_admin_menu(),
+    )
+
+
+@router.callback_query(F.data == "adm:vipadd")
+async def admin_vip_add_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.set_state(AdminFlow.vip_user_id)
+    await safe_edit(
+        call,
+        "➕ <b>VIP berish</b>\n\nFoydalanuvchining Telegram ID raqamini yozing:",
+        cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.vip_user_id, F.text)
+async def admin_vip_user_save(message: Message, state: FSMContext, admin_id: int):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    if not message.text.isdigit() or int(message.text) < 1:
+        return await message.answer("Faqat Telegram ID raqamini yozing:", reply_markup=cancel_kb())
+    await state.update_data(vip_user_id=int(message.text))
+    await state.set_state(AdminFlow.vip_days)
+    await message.answer(
+        "VIP necha kun ishlashini yozing.\n\nMasalan: <code>30</code>",
+        reply_markup=cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.vip_days, F.text)
+async def admin_vip_days_save(
+    message: Message,
+    state: FSMContext,
+    db: Database,
+    bot: Bot,
+    admin_id: int,
+):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    if not message.text.isdigit() or not 1 <= int(message.text) <= 3650:
+        return await message.answer(
+            "1 dan 3650 gacha kun sonini yozing:", reply_markup=cancel_kb()
+        )
+    data = await state.get_data()
+    user_id = data["vip_user_id"]
+    days = int(message.text)
+    vip = await db.grant_vip(user_id, days)
+    await state.clear()
+    expires = vip["expires_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+    await message.answer(
+        "✅ <b>VIP huquqi berildi.</b>\n\n"
+        f"👤 ID: <code>{user_id}</code>\n"
+        f"⏳ Muddat: <b>{days} kun</b>\n"
+        f"📅 Tugaydi: <b>{expires}</b>",
+        reply_markup=vip_admin_menu(),
+    )
+    try:
+        await bot.send_message(
+            user_id,
+            "💎 <b>Sizga VIP huquqi berildi!</b>\n\n"
+            f"VIP muddati: <b>{expires}</b> gacha.",
+            reply_markup=main_menu(),
+        )
+    except TelegramAPIError:
+        await message.answer("⚠️ VIP saqlandi, lekin foydalanuvchiga xabar yuborilmadi.")
+
+
+@router.callback_query(F.data == "adm:viprevoke")
+async def admin_vip_revoke_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.set_state(AdminFlow.vip_revoke_id)
+    await safe_edit(
+        call,
+        "➖ <b>VIPni bekor qilish</b>\n\nFoydalanuvchining Telegram ID raqamini yozing:",
+        cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.vip_revoke_id, F.text)
+async def admin_vip_revoke_save(
+    message: Message,
+    state: FSMContext,
+    db: Database,
+    bot: Bot,
+    admin_id: int,
+):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    if not message.text.isdigit() or int(message.text) < 1:
+        return await message.answer("Faqat Telegram ID raqamini yozing:", reply_markup=cancel_kb())
+    user_id = int(message.text)
+    removed = await db.revoke_vip(user_id)
+    await state.clear()
+    if not removed:
+        return await message.answer(
+            "Bu foydalanuvchida VIP huquqi topilmadi.", reply_markup=vip_admin_menu()
+        )
+    await message.answer("✅ VIP huquqi bekor qilindi.", reply_markup=vip_admin_menu())
+    try:
+        await bot.send_message(user_id, "ℹ️ VIP huquqingiz bekor qilindi.", reply_markup=main_menu())
+    except TelegramAPIError:
+        pass
+
+
+@router.callback_query(F.data == "adm:vipmovies")
+async def admin_vip_movie_picker(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await safe_edit(
+        call,
+        "🎬 <b>VIP kinolarni belgilash</b>\n\n"
+        "💎 belgili kino faqat VIP foydalanuvchilarga ko‘rinadi. Kinoni tanlang:",
+        await admin_movie_picker(db, "adm:viptoggle", "adm:vip"),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:viptoggle:"))
+async def admin_vip_movie_toggle(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    movie_id = int(call.data.rsplit(":", 1)[1])
+    movie = await db.movie(movie_id)
+    if not movie:
+        return await call.answer("Kino topilmadi.", show_alert=True)
+    updated = await db.set_movie_vip(movie_id, not movie["is_vip"])
+    status = "💎 VIP qilindi" if updated["is_vip"] else "🎬 Oddiy katalogga qaytarildi"
+    await safe_edit(
+        call,
+        f"✅ <b>{escape(updated['title'])}</b> — {status}.",
+        InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎬 Yana kino belgilash", callback_data="adm:vipmovies")],
+            [InlineKeyboardButton(text="⬅️ VIP boshqaruvi", callback_data="adm:vip")],
+        ]),
+    )
+
+
+@router.callback_query(F.data == "adm:viplist")
+async def admin_vip_list(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    users = await db.active_vip_users()
+    lines = ["👥 <b>Faol VIP foydalanuvchilar</b>"]
+    for vip in users:
+        expires = vip["expires_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+        lines.append(f"\n💎 <code>{vip['user_id']}</code> — {expires} gacha")
+    if not users:
+        lines.append("\n\nHozircha faol VIP foydalanuvchilar yo‘q.")
+    await safe_edit(call, "".join(lines), vip_admin_menu())
+
+
 @router.callback_query(F.data == "adm:addmovie")
 async def add_movie_prompt(call: CallbackQuery, state: FSMContext, admin_id: int):
     if not is_admin(call.from_user.id, admin_id): return await call.answer("Ruxsat yo‘q.", show_alert=True)
@@ -955,7 +1211,8 @@ async def admin_movie_picker(db: Database, action: str, back="admin"):
     items = await db.movies(0, 100)
     b = InlineKeyboardBuilder()
     for m in items:
-        b.button(text=f"{m['emoji']} {m['title']}", callback_data=f"{action}:{m['id']}")
+        marker = "💎" if m["is_vip"] else m["emoji"]
+        b.button(text=f"{marker} {m['title']}", callback_data=f"{action}:{m['id']}")
     b.adjust(1)
     b.row(InlineKeyboardButton(text="⬅️ Admin panel", callback_data=back))
     return b.as_markup()
@@ -1000,8 +1257,8 @@ async def add_ep_video(
     await db.set_episode_video(data["episode_id"], message.video.file_id, message.video.file_unique_id)
     await state.clear()
     await message.answer(f"✅ {data['episode_number']}-QISM videosi saqlandi va foydalanuvchilarga ochildi.", reply_markup=admin_menu())
-    if channel_id:
-        ep = await db.episode(data["episode_id"])
+    ep = await db.episode(data["episode_id"])
+    if channel_id and not ep["movie_is_vip"]:
         me = await bot.get_me()
         announcement = (
             f"🔥 <b>YANGI QISM!</b>\n\n"

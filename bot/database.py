@@ -28,6 +28,7 @@ class Database:
             );
             ALTER TABLE movies ADD COLUMN IF NOT EXISTS poster_file_id TEXT;
             ALTER TABLE movies ADD COLUMN IF NOT EXISTS description TEXT;
+            ALTER TABLE movies ADD COLUMN IF NOT EXISTS is_vip BOOLEAN NOT NULL DEFAULT FALSE;
             CREATE UNIQUE INDEX IF NOT EXISTS movies_title_lower_uq ON movies (LOWER(title));
             CREATE TABLE IF NOT EXISTS episodes (
                 id BIGSERIAL PRIMARY KEY,
@@ -95,6 +96,13 @@ class Database:
                 ON movie_requests(status, created_at DESC);
             CREATE UNIQUE INDEX IF NOT EXISTS movie_requests_pending_user_title_uq
                 ON movie_requests(user_id, LOWER(title)) WHERE status='pending';
+            CREATE TABLE IF NOT EXISTS vip_users (
+                user_id BIGINT PRIMARY KEY,
+                expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS vip_users_expires_idx ON vip_users(expires_at);
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -111,6 +119,28 @@ class Database:
         assert self.pool
         return await self.pool.fetchval("SELECT COUNT(*) FROM movies")
 
+    async def public_movies(self, offset=0, limit=10):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT * FROM movies WHERE is_vip=FALSE
+            ORDER BY created_at DESC, id DESC OFFSET $1 LIMIT $2
+        """, offset, limit)
+
+    async def public_movie_count(self):
+        assert self.pool
+        return await self.pool.fetchval("SELECT COUNT(*) FROM movies WHERE is_vip=FALSE")
+
+    async def vip_movies(self, offset=0, limit=10):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT * FROM movies WHERE is_vip=TRUE
+            ORDER BY created_at DESC, id DESC OFFSET $1 LIMIT $2
+        """, offset, limit)
+
+    async def vip_movie_count(self):
+        assert self.pool
+        return await self.pool.fetchval("SELECT COUNT(*) FROM movies WHERE is_vip=TRUE")
+
     async def movie(self, movie_id: int):
         assert self.pool
         return await self.pool.fetchrow("SELECT * FROM movies WHERE id=$1", movie_id)
@@ -118,7 +148,9 @@ class Database:
     async def search_movies(self, query: str, limit=20):
         assert self.pool
         return await self.pool.fetch(
-            "SELECT * FROM movies WHERE title ILIKE $1 ORDER BY title LIMIT $2", f"%{query.strip()}%", limit
+            "SELECT * FROM movies WHERE is_vip=FALSE AND title ILIKE $1 ORDER BY title LIMIT $2",
+            f"%{query.strip()}%",
+            limit,
         )
 
     async def rename_movie(self, movie_id: int, title: str):
@@ -173,7 +205,8 @@ class Database:
     async def episode(self, episode_id: int):
         assert self.pool
         return await self.pool.fetchrow("""
-            SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji
+            SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji,
+                   m.is_vip AS movie_is_vip
             FROM episodes e JOIN movies m ON m.id=e.movie_id WHERE e.id=$1
         """, episode_id)
 
@@ -188,8 +221,53 @@ class Database:
         return await self.pool.fetch("""
             SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji
             FROM episodes e JOIN movies m ON m.id=e.movie_id
-            WHERE e.file_id IS NOT NULL ORDER BY e.created_at DESC LIMIT $1
+            WHERE e.file_id IS NOT NULL AND m.is_vip=FALSE
+            ORDER BY e.created_at DESC LIMIT $1
         """, limit)
+
+    async def is_vip_user(self, user_id: int) -> bool:
+        assert self.pool
+        return bool(await self.pool.fetchval("""
+            SELECT EXISTS(
+                SELECT 1 FROM vip_users WHERE user_id=$1 AND expires_at>NOW()
+            )
+        """, user_id))
+
+    async def vip_user(self, user_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT * FROM vip_users WHERE user_id=$1 AND expires_at>NOW()
+        """, user_id)
+
+    async def grant_vip(self, user_id: int, days: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            INSERT INTO vip_users(user_id, expires_at)
+            VALUES($1, NOW() + make_interval(days => $2))
+            ON CONFLICT(user_id) DO UPDATE SET
+                expires_at=GREATEST(vip_users.expires_at, NOW()) + make_interval(days => $2),
+                updated_at=NOW()
+            RETURNING *
+        """, user_id, days)
+
+    async def revoke_vip(self, user_id: int):
+        assert self.pool
+        return await self.pool.fetchrow(
+            "DELETE FROM vip_users WHERE user_id=$1 RETURNING *", user_id
+        )
+
+    async def active_vip_users(self, limit: int = 100):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT * FROM vip_users WHERE expires_at>NOW()
+            ORDER BY expires_at LIMIT $1
+        """, limit)
+
+    async def set_movie_vip(self, movie_id: int, is_vip: bool):
+        assert self.pool
+        return await self.pool.fetchrow(
+            "UPDATE movies SET is_vip=$2 WHERE id=$1 RETURNING *", movie_id, is_vip
+        )
 
     async def save_watch_progress(self, user_id: int, episode_id: int):
         assert self.pool
@@ -204,7 +282,8 @@ class Database:
     async def watch_progress(self, user_id: int):
         assert self.pool
         return await self.pool.fetchrow("""
-            SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji
+            SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji,
+                   m.is_vip AS movie_is_vip
             FROM watch_progress w
             JOIN episodes e ON e.id=w.episode_id
             JOIN movies m ON m.id=e.movie_id
@@ -279,7 +358,8 @@ class Database:
     async def favorite_episodes(self, user_id: int, limit: int = 100):
         assert self.pool
         return await self.pool.fetch("""
-            SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji
+            SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji,
+                   m.is_vip AS movie_is_vip
             FROM favorite_episodes f
             JOIN episodes e ON e.id=f.episode_id
             JOIN movies m ON m.id=e.movie_id
@@ -389,6 +469,7 @@ class Database:
                     WHERE user_id<>$1
                       AND (last_seen_at AT TIME ZONE 'Europe/London')::date =
                           (NOW() AT TIME ZONE 'Europe/London')::date) AS today_users,
+                (SELECT COUNT(*) FROM vip_users WHERE expires_at>NOW()) AS active_vips,
                 (SELECT COUNT(*) FROM episode_views WHERE user_id<>$1) AS total_views,
                 (SELECT COUNT(*) FROM episode_views
                     WHERE user_id<>$1
