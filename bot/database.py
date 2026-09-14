@@ -63,6 +63,23 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS favorite_episodes_user_created_idx
                 ON favorite_episodes(user_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS bot_users (
+                user_id BIGINT PRIMARY KEY,
+                first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS bot_users_last_seen_idx
+                ON bot_users(last_seen_at DESC);
+            CREATE TABLE IF NOT EXISTS episode_views (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+                viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS episode_views_user_date_idx
+                ON episode_views(user_id, viewed_at DESC);
+            CREATE INDEX IF NOT EXISTS episode_views_episode_date_idx
+                ON episode_views(episode_id, viewed_at DESC);
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -255,6 +272,55 @@ class Database:
             ORDER BY f.created_at DESC
             LIMIT $2
         """, user_id, limit)
+
+    async def track_user(self, user_id: int):
+        assert self.pool
+        return await self.pool.execute("""
+            INSERT INTO bot_users(user_id, first_seen_at, last_seen_at)
+            VALUES($1, NOW(), NOW())
+            ON CONFLICT(user_id) DO UPDATE SET last_seen_at=NOW()
+        """, user_id)
+
+    async def record_episode_view(self, user_id: int, episode_id: int):
+        assert self.pool
+        return await self.pool.execute(
+            "INSERT INTO episode_views(user_id, episode_id) VALUES($1, $2)",
+            user_id,
+            episode_id,
+        )
+
+    async def statistics(self, admin_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT
+                (SELECT COUNT(*) FROM bot_users WHERE user_id<>$1) AS total_users,
+                (SELECT COUNT(*) FROM bot_users
+                    WHERE user_id<>$1
+                      AND (last_seen_at AT TIME ZONE 'Europe/London')::date =
+                          (NOW() AT TIME ZONE 'Europe/London')::date) AS today_users,
+                (SELECT COUNT(*) FROM episode_views WHERE user_id<>$1) AS total_views,
+                (SELECT COUNT(*) FROM episode_views
+                    WHERE user_id<>$1
+                      AND (viewed_at AT TIME ZONE 'Europe/London')::date =
+                          (NOW() AT TIME ZONE 'Europe/London')::date) AS today_views,
+                (SELECT COUNT(*) FROM movies) AS movie_count,
+                (SELECT COUNT(*) FROM episodes WHERE file_id IS NOT NULL) AS episode_count,
+                (SELECT COUNT(*) FROM favorite_movies WHERE user_id<>$1) AS movie_favorites,
+                (SELECT COUNT(*) FROM favorite_episodes WHERE user_id<>$1) AS episode_favorites
+        """, admin_id)
+
+    async def top_viewed_movies(self, admin_id: int, limit: int = 5):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT m.id, m.title, m.emoji, COUNT(*) AS view_count
+            FROM episode_views v
+            JOIN episodes e ON e.id=v.episode_id
+            JOIN movies m ON m.id=e.movie_id
+            WHERE v.user_id<>$1
+            GROUP BY m.id, m.title, m.emoji
+            ORDER BY view_count DESC, m.title
+            LIMIT $2
+        """, admin_id, limit)
 
     async def set_episode_number(self, episode_id: int, number: int):
         assert self.pool

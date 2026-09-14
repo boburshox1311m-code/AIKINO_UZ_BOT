@@ -66,6 +66,9 @@ class SubscriptionMiddleware(BaseMiddleware):
         user = event.from_user
         admin_id = data.get("admin_id")
         channel_id = data.get("channel_id")
+        db: Database | None = data.get("db")
+        if user and user.id != admin_id and db:
+            await db.track_user(user.id)
         if not user or not channel_id or user.id == admin_id:
             return await handler(event, data)
         if isinstance(event, CallbackQuery) and (event.data or "").startswith("subcheck:"):
@@ -159,6 +162,7 @@ def admin_menu():
         [InlineKeyboardButton(text="✏️ Kino/qismni tahrirlash", callback_data="adm:edit")],
         [InlineKeyboardButton(text="🗑 Kino/qismni o‘chirish", callback_data="adm:delete")],
         [InlineKeyboardButton(text="📋 Kinolar ro‘yxati", callback_data="adm:list")],
+        [InlineKeyboardButton(text="📊 Statistika", callback_data="adm:stats")],
         [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
     ])
 
@@ -173,6 +177,10 @@ async def safe_edit(call: CallbackQuery, text: str, markup=None):
 
 def is_admin(user_id: int, admin_id: int):
     return user_id == admin_id
+
+
+def format_number(value: int) -> str:
+    return f"{int(value):,}".replace(",", " ")
 
 
 async def episode_markup(db: Database, ep, user_id: int):
@@ -213,6 +221,7 @@ async def send_episode_message(
     )
     if viewer_user_id is not None:
         await db.save_watch_progress(viewer_user_id, ep["id"])
+        await db.record_episode_view(viewer_user_id, ep["id"])
     return True
 
 
@@ -480,6 +489,44 @@ async def admin_panel(call: CallbackQuery, state: FSMContext, admin_id: int):
         return await call.answer("Ruxsat yo‘q.", show_alert=True)
     await state.clear()
     await safe_edit(call, "🔐 <b>Admin panel</b>\n\nKerakli amalni tanlang:", admin_menu())
+
+
+@router.callback_query(F.data == "adm:stats")
+async def admin_statistics(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    stats = await db.statistics(admin_id)
+    top_movies = await db.top_viewed_movies(admin_id)
+    if top_movies:
+        top_lines = "\n".join(
+            f"{index}. {escape(movie['emoji'])} {escape(movie['title'])} — "
+            f"<b>{format_number(movie['view_count'])}</b> marta"
+            for index, movie in enumerate(top_movies, start=1)
+        )
+    else:
+        top_lines = "Hozircha ko‘rishlar yo‘q."
+    text = (
+        "📊 <b>Bot statistikasi</b>\n\n"
+        "👥 <b>Foydalanuvchilar</b>\n"
+        f"• Jami: <b>{format_number(stats['total_users'])}</b>\n"
+        f"• Bugun faol: <b>{format_number(stats['today_users'])}</b>\n\n"
+        "▶️ <b>Qismlar ko‘rilishi</b>\n"
+        f"• Jami: <b>{format_number(stats['total_views'])}</b>\n"
+        f"• Bugun: <b>{format_number(stats['today_views'])}</b>\n\n"
+        "🎬 <b>Kontent</b>\n"
+        f"• Kinolar: <b>{format_number(stats['movie_count'])}</b>\n"
+        f"• Qismlar: <b>{format_number(stats['episode_count'])}</b>\n\n"
+        "❤️ <b>Sevimlilarga qo‘shilgan</b>\n"
+        f"• Kinolar: <b>{format_number(stats['movie_favorites'])}</b>\n"
+        f"• Qismlar: <b>{format_number(stats['episode_favorites'])}</b>\n\n"
+        f"🔥 <b>Eng ko‘p ko‘rilgan kinolar</b>\n{top_lines}\n\n"
+        "<i>Bugungi hisob London vaqti bo‘yicha.</i>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Yangilash", callback_data="adm:stats")],
+        [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin")],
+    ])
+    await safe_edit(call, text, kb)
 
 
 @router.callback_query(F.data == "adm:addmovie")
