@@ -146,6 +146,22 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS manual_payment_requests_status_created_idx
                 ON manual_payment_requests(status, created_at DESC);
+            CREATE TABLE IF NOT EXISTS broadcast_history (
+                id BIGSERIAL PRIMARY KEY,
+                admin_id BIGINT NOT NULL,
+                source_chat_id BIGINT NOT NULL,
+                source_message_id BIGINT NOT NULL,
+                content_type TEXT NOT NULL,
+                preview_text TEXT,
+                link_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                total_recipients INTEGER NOT NULL DEFAULT 0,
+                sent_count INTEGER NOT NULL DEFAULT 0,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                completed_at TIMESTAMPTZ
+            );
+            CREATE INDEX IF NOT EXISTS broadcast_history_created_idx
+                ON broadcast_history(created_at DESC);
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -424,6 +440,60 @@ class Database:
         return await self.pool.fetch(
             "SELECT user_id FROM bot_users WHERE user_id<>$1 AND is_active=TRUE ORDER BY user_id",
             admin_id,
+        )
+
+    async def create_broadcast_history(
+        self,
+        admin_id: int,
+        source_chat_id: int,
+        source_message_id: int,
+        content_type: str,
+        preview_text: str | None,
+        link_enabled: bool,
+        total_recipients: int,
+    ):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            INSERT INTO broadcast_history(
+                admin_id, source_chat_id, source_message_id, content_type,
+                preview_text, link_enabled, total_recipients
+            )
+            VALUES($1,$2,$3,$4,$5,$6,$7)
+            RETURNING *
+        """, admin_id, source_chat_id, source_message_id, content_type,
+            preview_text, link_enabled, total_recipients)
+
+    async def finish_broadcast_history(self, history_id: int, sent: int, failed: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            UPDATE broadcast_history
+            SET sent_count=$2, failed_count=$3, completed_at=NOW()
+            WHERE id=$1
+            RETURNING *
+        """, history_id, sent, failed)
+
+    async def broadcast_history_count(self):
+        assert self.pool
+        return await self.pool.fetchval("SELECT COUNT(*) FROM broadcast_history")
+
+    async def broadcast_history(self, offset: int = 0, limit: int = 10):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT * FROM broadcast_history
+            ORDER BY created_at DESC, id DESC
+            OFFSET $1 LIMIT $2
+        """, offset, limit)
+
+    async def broadcast_history_item(self, history_id: int):
+        assert self.pool
+        return await self.pool.fetchrow(
+            "SELECT * FROM broadcast_history WHERE id=$1", history_id
+        )
+
+    async def delete_broadcast_history(self, history_id: int):
+        assert self.pool
+        return await self.pool.fetchrow(
+            "DELETE FROM broadcast_history WHERE id=$1 RETURNING *", history_id
         )
 
     async def mark_user_inactive(self, user_id: int):
