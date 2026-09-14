@@ -6,6 +6,7 @@ import re
 import logging
 from html import escape
 from typing import Any, Awaitable, Callable
+from zoneinfo import ZoneInfo
 
 import asyncpg
 from aiogram import BaseMiddleware, Bot, F, Router
@@ -22,6 +23,8 @@ from .database import Database
 router = Router()
 PAGE_MOVIES = 8
 PAGE_EPISODES = 10
+PAGE_REQUESTS = 10
+LONDON_TZ = ZoneInfo("Europe/London")
 
 
 def subscription_kb(channel_id: str, target: str = "home"):
@@ -118,6 +121,10 @@ class SearchFlow(StatesGroup):
     query = State()
 
 
+class MovieRequestFlow(StatesGroup):
+    title = State()
+
+
 def main_menu(is_admin=False):
     rows = [
         [InlineKeyboardButton(text="🎬 Kinolar", callback_data="movies:0")],
@@ -125,6 +132,7 @@ def main_menu(is_admin=False):
         [InlineKeyboardButton(text="❤️ Sevimlilar", callback_data="favorites")],
         [InlineKeyboardButton(text="🔥 Yangi qismlar", callback_data="latest")],
         [InlineKeyboardButton(text="🔎 Kino qidirish", callback_data="search")],
+        [InlineKeyboardButton(text="🎬 Kino so‘rash", callback_data="requestmovie")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton(text="🔐 Admin panel", callback_data="admin")])
@@ -167,6 +175,7 @@ def admin_menu():
         [InlineKeyboardButton(text="📋 Kinolar ro‘yxati", callback_data="adm:list")],
         [InlineKeyboardButton(text="📊 Statistika", callback_data="adm:stats")],
         [InlineKeyboardButton(text="📣 Hammaga xabar yuborish", callback_data="adm:broadcast")],
+        [InlineKeyboardButton(text="📩 Kino so‘rovlari", callback_data="adm:requests:0")],
         [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
     ])
 
@@ -496,6 +505,71 @@ async def search_result(message: Message, state: FSMContext, db: Database):
     await message.answer(text, reply_markup=b.as_markup())
 
 
+@router.callback_query(F.data == "requestmovie")
+async def request_movie_prompt(call: CallbackQuery, state: FSMContext):
+    await state.set_state(MovieRequestFlow.title)
+    await safe_edit(
+        call,
+        "🎬 <b>Kino so‘rash</b>\n\n"
+        "Botga qo‘shilishini xohlagan kino yoki serial nomini yozing:",
+        cancel_kb(),
+    )
+
+
+@router.message(MovieRequestFlow.title, F.text)
+async def request_movie_save(
+    message: Message,
+    state: FSMContext,
+    db: Database,
+    bot: Bot,
+    admin_id: int,
+):
+    title = message.text.strip()
+    if len(title) < 2:
+        return await message.answer("Kino nomini to‘liqroq yozing:", reply_markup=cancel_kb())
+    if len(title) > 120:
+        return await message.answer(
+            "Kino nomi juda uzun. 120 ta belgidan qisqaroq yozing:",
+            reply_markup=cancel_kb(),
+        )
+
+    result, request = await db.create_movie_request(message.from_user.id, title)
+    await state.clear()
+    if result == "cooldown":
+        return await message.answer(
+            "⏳ So‘rovlar orasida 1 daqiqa kuting.",
+            reply_markup=main_menu(),
+        )
+    if result == "duplicate":
+        return await message.answer(
+            f"ℹ️ <b>{escape(title)}</b> uchun so‘rovingiz allaqachon ro‘yxatda.",
+            reply_markup=main_menu(),
+        )
+
+    await message.answer(
+        f"✅ <b>{escape(title)}</b> uchun so‘rovingiz qabul qilindi.\n\n"
+        "Kino botga joylanganda sizga xabar beramiz.",
+        reply_markup=main_menu(),
+    )
+    username = f"@{message.from_user.username}" if message.from_user.username else "username yo‘q"
+    user_name = escape(message.from_user.full_name)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Joylandi", callback_data=f"adm:reqdone:{request['id']}:0")],
+        [InlineKeyboardButton(text="🗑 O‘chirish", callback_data=f"adm:reqdelete:{request['id']}:0")],
+    ])
+    try:
+        await bot.send_message(
+            admin_id,
+            "📩 <b>Yangi kino so‘rovi</b>\n\n"
+            f"🎬 <b>{escape(title)}</b>\n"
+            f"👤 {user_name} ({escape(username)})\n"
+            f"🆔 <code>{message.from_user.id}</code>",
+            reply_markup=kb,
+        )
+    except TelegramAPIError:
+        logging.getLogger(__name__).exception("Adminga kino so‘rovi bildirishnomasi yuborilmadi")
+
+
 @router.message(Command("admin"))
 async def admin_command(message: Message, state: FSMContext, admin_id: int):
     await state.clear()
@@ -687,6 +761,117 @@ async def broadcast_send(
         f"📨 Yuborildi: <b>{format_number(sent)}</b>\n"
         f"⚠️ Yuborilmadi: <b>{format_number(failed)}</b>",
         reply_markup=admin_menu(),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:requests:"))
+async def admin_movie_requests(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    page = int(call.data.rsplit(":", 1)[1])
+    count = await db.movie_request_count()
+    page = max(0, min(page, max(0, math.ceil(count / PAGE_REQUESTS) - 1)))
+    items = await db.movie_requests(page * PAGE_REQUESTS, PAGE_REQUESTS)
+    b = InlineKeyboardBuilder()
+    for request in items:
+        title = request["title"]
+        short_title = title if len(title) <= 42 else f"{title[:39]}…"
+        b.button(
+            text=f"🎬 {short_title}",
+            callback_data=f"adm:req:{request['id']}:{page}",
+        )
+    b.adjust(1)
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"adm:requests:{page-1}"))
+    if (page + 1) * PAGE_REQUESTS < count:
+        nav.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"adm:requests:{page+1}"))
+    if nav:
+        b.row(*nav)
+    b.row(InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin"))
+    text = (
+        f"📩 <b>Kino so‘rovlari</b> — {format_number(count)} ta\n\nSo‘rovni tanlang:"
+        if items else
+        "📩 <b>Kino so‘rovlari</b>\n\nHozircha yangi so‘rovlar yo‘q."
+    )
+    await safe_edit(call, text, b.as_markup())
+
+
+@router.callback_query(F.data.startswith("adm:req:"))
+async def admin_movie_request_detail(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    _, _, request_id, page = call.data.split(":")
+    request = await db.movie_request(int(request_id))
+    if not request or request["status"] != "pending":
+        return await call.answer("Bu so‘rov allaqachon yopilgan.", show_alert=True)
+    created = request["created_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="✅ Joylandi",
+            callback_data=f"adm:reqdone:{request['id']}:{page}",
+        )],
+        [InlineKeyboardButton(
+            text="🗑 O‘chirish",
+            callback_data=f"adm:reqdelete:{request['id']}:{page}",
+        )],
+        [InlineKeyboardButton(text="⬅️ So‘rovlar", callback_data=f"adm:requests:{page}")],
+    ])
+    await safe_edit(
+        call,
+        "📩 <b>Kino so‘rovi</b>\n\n"
+        f"🎬 <b>{escape(request['title'])}</b>\n"
+        f"👤 Foydalanuvchi ID: <code>{request['user_id']}</code>\n"
+        f"🕒 {created}",
+        kb,
+    )
+
+
+@router.callback_query(F.data.startswith("adm:reqdone:"))
+async def admin_complete_movie_request(
+    call: CallbackQuery,
+    db: Database,
+    bot: Bot,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    _, _, request_id, page = call.data.split(":")
+    request = await db.complete_movie_request(int(request_id))
+    if not request:
+        return await call.answer("Bu so‘rov allaqachon yopilgan.", show_alert=True)
+    try:
+        await bot.send_message(
+            request["user_id"],
+            f"✅ Siz so‘ragan <b>{escape(request['title'])}</b> botga joylandi!\n\n"
+            "Tomosha qilish uchun kino qidiruvidan foydalaning.",
+            reply_markup=main_menu(),
+        )
+    except TelegramAPIError:
+        logging.getLogger(__name__).exception("Kino so‘rovi egasiga xabar yuborilmadi")
+    await safe_edit(
+        call,
+        f"✅ <b>{escape(request['title'])}</b> so‘rovi bajarildi deb belgilandi.",
+        InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⬅️ So‘rovlar", callback_data=f"adm:requests:{page}")
+        ]]),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:reqdelete:"))
+async def admin_delete_movie_request(call: CallbackQuery, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    _, _, request_id, page = call.data.split(":")
+    request = await db.delete_movie_request(int(request_id))
+    if not request:
+        return await call.answer("So‘rov topilmadi.", show_alert=True)
+    await safe_edit(
+        call,
+        f"🗑 <b>{escape(request['title'])}</b> so‘rovi o‘chirildi.",
+        InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⬅️ So‘rovlar", callback_data=f"adm:requests:{page}")
+        ]]),
     )
 
 

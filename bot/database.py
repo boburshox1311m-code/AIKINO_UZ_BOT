@@ -82,6 +82,19 @@ class Database:
                 ON episode_views(user_id, viewed_at DESC);
             CREATE INDEX IF NOT EXISTS episode_views_episode_date_idx
                 ON episode_views(episode_id, viewed_at DESC);
+            CREATE TABLE IF NOT EXISTS movie_requests (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'done')),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                completed_at TIMESTAMPTZ
+            );
+            CREATE INDEX IF NOT EXISTS movie_requests_status_created_idx
+                ON movie_requests(status, created_at DESC);
+            CREATE UNIQUE INDEX IF NOT EXISTS movie_requests_pending_user_title_uq
+                ON movie_requests(user_id, LOWER(title)) WHERE status='pending';
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -295,6 +308,68 @@ class Database:
         return await self.pool.execute(
             "UPDATE bot_users SET is_active=FALSE WHERE user_id=$1",
             user_id,
+        )
+
+    async def create_movie_request(self, user_id: int, title: str):
+        assert self.pool
+        clean_title = title.strip()
+        async with self.pool.acquire() as connection:
+            duplicate = await connection.fetchrow("""
+                SELECT * FROM movie_requests
+                WHERE user_id=$1 AND LOWER(title)=LOWER($2) AND status='pending'
+                LIMIT 1
+            """, user_id, clean_title)
+            if duplicate:
+                return "duplicate", duplicate
+            recent = await connection.fetchval("""
+                SELECT EXISTS(
+                    SELECT 1 FROM movie_requests
+                    WHERE user_id=$1 AND created_at > NOW() - INTERVAL '60 seconds'
+                )
+            """, user_id)
+            if recent:
+                return "cooldown", None
+            request = await connection.fetchrow("""
+                INSERT INTO movie_requests(user_id, title)
+                VALUES($1, $2)
+                RETURNING *
+            """, user_id, clean_title)
+            return "created", request
+
+    async def movie_request_count(self):
+        assert self.pool
+        return await self.pool.fetchval(
+            "SELECT COUNT(*) FROM movie_requests WHERE status='pending'"
+        )
+
+    async def movie_requests(self, offset: int = 0, limit: int = 10):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT * FROM movie_requests
+            WHERE status='pending'
+            ORDER BY created_at, id
+            OFFSET $1 LIMIT $2
+        """, offset, limit)
+
+    async def movie_request(self, request_id: int):
+        assert self.pool
+        return await self.pool.fetchrow(
+            "SELECT * FROM movie_requests WHERE id=$1", request_id
+        )
+
+    async def complete_movie_request(self, request_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            UPDATE movie_requests
+            SET status='done', completed_at=NOW()
+            WHERE id=$1 AND status='pending'
+            RETURNING *
+        """, request_id)
+
+    async def delete_movie_request(self, request_id: int):
+        assert self.pool
+        return await self.pool.fetchrow(
+            "DELETE FROM movie_requests WHERE id=$1 RETURNING *", request_id
         )
 
     async def record_episode_view(self, user_id: int, episode_id: int):
