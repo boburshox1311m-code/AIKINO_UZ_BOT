@@ -127,6 +127,25 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS vip_payments_user_created_idx
                 ON vip_payments(user_id, created_at DESC);
+            INSERT INTO bot_settings(key, value) VALUES
+                ('manual_payments_enabled', 'false'),
+                ('manual_card_number', ''),
+                ('manual_card_holder', ''),
+                ('vip_price_uzs', '50000'),
+                ('vip_days', '30')
+            ON CONFLICT (key) DO NOTHING;
+            CREATE TABLE IF NOT EXISTS manual_payment_requests (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                amount_uzs BIGINT NOT NULL,
+                receipt_file_id TEXT,
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'approved', 'rejected')),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                reviewed_at TIMESTAMPTZ
+            );
+            CREATE INDEX IF NOT EXISTS manual_payment_requests_status_created_idx
+                ON manual_payment_requests(status, created_at DESC);
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -609,6 +628,56 @@ class Database:
                    COALESCE(SUM(total_amount), 0) AS total_stars
             FROM vip_payments
         """)
+
+    async def manual_payment_settings(self):
+        return {
+            "enabled": (await self.get_setting("manual_payments_enabled", "false")).lower() == "true",
+            "card_number": await self.get_setting("manual_card_number", ""),
+            "card_holder": await self.get_setting("manual_card_holder", ""),
+            "price_uzs": int(await self.get_setting("vip_price_uzs", "50000")),
+            "vip_days": int(await self.get_setting("vip_days", "30")),
+        }
+
+    async def create_manual_payment_request(self, user_id: int, amount_uzs: int):
+        assert self.pool
+        existing = await self.pool.fetchrow("""
+            SELECT * FROM manual_payment_requests
+            WHERE user_id=$1 AND status='pending'
+            ORDER BY created_at DESC LIMIT 1
+        """, user_id)
+        if existing:
+            return "duplicate", existing
+        request = await self.pool.fetchrow("""
+            INSERT INTO manual_payment_requests(user_id, amount_uzs)
+            VALUES($1, $2)
+            RETURNING *
+        """, user_id, amount_uzs)
+        return "created", request
+
+    async def set_manual_payment_receipt(self, request_id: int, file_id: str):
+        assert self.pool
+        return await self.pool.execute("""
+            UPDATE manual_payment_requests
+            SET receipt_file_id=$2
+            WHERE id=$1
+        """, request_id, file_id)
+
+    async def manual_payment_request(self, request_id: int):
+        assert self.pool
+        return await self.pool.fetchrow(
+            "SELECT * FROM manual_payment_requests WHERE id=$1", request_id
+        )
+
+    async def review_manual_payment(self, request_id: int, status: str):
+        assert self.pool
+        if status not in {"approved", "rejected"}:
+            raise ValueError("Invalid manual payment status")
+        return await self.pool.fetchrow("""
+            UPDATE manual_payment_requests
+            SET status=$2, reviewed_at=NOW()
+            WHERE id=$1 AND status='pending'
+            RETURNING *
+        """, request_id, status)
 
     async def set_episode_number(self, episode_id: int, number: int):
         assert self.pool
