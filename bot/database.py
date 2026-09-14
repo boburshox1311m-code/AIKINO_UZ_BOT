@@ -103,6 +103,30 @@ class Database:
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
             CREATE INDEX IF NOT EXISTS vip_users_expires_idx ON vip_users(expires_at);
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            INSERT INTO bot_settings(key, value)
+            VALUES('vip_price_stars', '100')
+            ON CONFLICT (key) DO NOTHING;
+            CREATE TABLE IF NOT EXISTS vip_payments (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                telegram_payment_charge_id TEXT NOT NULL UNIQUE,
+                provider_payment_charge_id TEXT,
+                invoice_payload TEXT NOT NULL,
+                currency TEXT NOT NULL,
+                total_amount INTEGER NOT NULL,
+                subscription_expires_at TIMESTAMPTZ NOT NULL,
+                is_recurring BOOLEAN NOT NULL DEFAULT FALSE,
+                is_first_recurring BOOLEAN NOT NULL DEFAULT FALSE,
+                renewal_canceled BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS vip_payments_user_created_idx
+                ON vip_payments(user_id, created_at DESC);
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -493,6 +517,98 @@ class Database:
             ORDER BY view_count DESC, m.title
             LIMIT $2
         """, admin_id, limit)
+
+    async def get_setting(self, key: str, default: str | None = None):
+        assert self.pool
+        value = await self.pool.fetchval(
+            "SELECT value FROM bot_settings WHERE key=$1", key
+        )
+        return default if value is None else value
+
+    async def set_setting(self, key: str, value: str):
+        assert self.pool
+        return await self.pool.execute("""
+            INSERT INTO bot_settings(key, value)
+            VALUES($1, $2)
+            ON CONFLICT (key) DO UPDATE
+            SET value=EXCLUDED.value, updated_at=NOW()
+        """, key, value)
+
+    async def vip_price_stars(self) -> int:
+        value = await self.get_setting("vip_price_stars", "100")
+        try:
+            return max(1, int(value))
+        except (TypeError, ValueError):
+            return 100
+
+    async def set_vip_price_stars(self, amount: int):
+        await self.set_setting("vip_price_stars", str(amount))
+
+    async def record_vip_payment(
+        self,
+        user_id: int,
+        telegram_charge_id: str,
+        provider_charge_id: str | None,
+        invoice_payload: str,
+        currency: str,
+        total_amount: int,
+        expires_at,
+        is_recurring: bool,
+        is_first_recurring: bool,
+    ) -> bool:
+        assert self.pool
+        async with self.pool.acquire() as connection:
+            async with connection.transaction():
+                inserted = await connection.fetchrow("""
+                    INSERT INTO vip_payments(
+                        user_id, telegram_payment_charge_id,
+                        provider_payment_charge_id, invoice_payload,
+                        currency, total_amount, subscription_expires_at,
+                        is_recurring, is_first_recurring
+                    )
+                    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                    ON CONFLICT (telegram_payment_charge_id) DO NOTHING
+                    RETURNING id
+                """, user_id, telegram_charge_id, provider_charge_id,
+                    invoice_payload, currency, total_amount, expires_at,
+                    is_recurring, is_first_recurring)
+                if not inserted:
+                    return False
+                await connection.execute("""
+                    INSERT INTO vip_users(user_id, expires_at)
+                    VALUES($1, $2)
+                    ON CONFLICT (user_id) DO UPDATE
+                    SET expires_at=GREATEST(vip_users.expires_at, EXCLUDED.expires_at),
+                        updated_at=NOW()
+                """, user_id, expires_at)
+                return True
+
+    async def active_subscription_payment(self, user_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT * FROM vip_payments
+            WHERE user_id=$1
+              AND subscription_expires_at>NOW()
+              AND renewal_canceled=FALSE
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, user_id)
+
+    async def cancel_subscription_renewal(self, telegram_charge_id: str):
+        assert self.pool
+        return await self.pool.execute("""
+            UPDATE vip_payments
+            SET renewal_canceled=TRUE
+            WHERE telegram_payment_charge_id=$1
+        """, telegram_charge_id)
+
+    async def vip_payment_stats(self):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT COUNT(*) AS payment_count,
+                   COALESCE(SUM(total_amount), 0) AS total_stars
+            FROM vip_payments
+        """)
 
     async def set_episode_number(self, episode_id: int, number: int):
         assert self.pool
