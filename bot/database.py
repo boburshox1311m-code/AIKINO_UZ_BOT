@@ -47,6 +47,22 @@ class Database:
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
             CREATE INDEX IF NOT EXISTS watch_progress_updated_idx ON watch_progress(updated_at DESC);
+            CREATE TABLE IF NOT EXISTS favorite_movies (
+                user_id BIGINT NOT NULL,
+                movie_id BIGINT NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY(user_id, movie_id)
+            );
+            CREATE INDEX IF NOT EXISTS favorite_movies_user_created_idx
+                ON favorite_movies(user_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS favorite_episodes (
+                user_id BIGINT NOT NULL,
+                episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY(user_id, episode_id)
+            );
+            CREATE INDEX IF NOT EXISTS favorite_episodes_user_created_idx
+                ON favorite_episodes(user_id, created_at DESC);
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -162,6 +178,83 @@ class Database:
             JOIN movies m ON m.id=e.movie_id
             WHERE w.user_id=$1 AND e.file_id IS NOT NULL
         """, user_id)
+
+    async def is_movie_favorite(self, user_id: int, movie_id: int) -> bool:
+        assert self.pool
+        return bool(await self.pool.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM favorite_movies WHERE user_id=$1 AND movie_id=$2)",
+            user_id,
+            movie_id,
+        ))
+
+    async def toggle_movie_favorite(self, user_id: int, movie_id: int) -> bool:
+        assert self.pool
+        async with self.pool.acquire() as connection:
+            async with connection.transaction():
+                added = await connection.fetchval("""
+                    INSERT INTO favorite_movies(user_id, movie_id)
+                    VALUES($1, $2)
+                    ON CONFLICT DO NOTHING
+                    RETURNING TRUE
+                """, user_id, movie_id)
+                if added:
+                    return True
+                await connection.execute(
+                    "DELETE FROM favorite_movies WHERE user_id=$1 AND movie_id=$2",
+                    user_id,
+                    movie_id,
+                )
+                return False
+
+    async def favorite_movies(self, user_id: int, limit: int = 100):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT m.*
+            FROM favorite_movies f
+            JOIN movies m ON m.id=f.movie_id
+            WHERE f.user_id=$1
+            ORDER BY f.created_at DESC
+            LIMIT $2
+        """, user_id, limit)
+
+    async def is_episode_favorite(self, user_id: int, episode_id: int) -> bool:
+        assert self.pool
+        return bool(await self.pool.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM favorite_episodes WHERE user_id=$1 AND episode_id=$2)",
+            user_id,
+            episode_id,
+        ))
+
+    async def toggle_episode_favorite(self, user_id: int, episode_id: int) -> bool:
+        assert self.pool
+        async with self.pool.acquire() as connection:
+            async with connection.transaction():
+                added = await connection.fetchval("""
+                    INSERT INTO favorite_episodes(user_id, episode_id)
+                    VALUES($1, $2)
+                    ON CONFLICT DO NOTHING
+                    RETURNING TRUE
+                """, user_id, episode_id)
+                if added:
+                    return True
+                await connection.execute(
+                    "DELETE FROM favorite_episodes WHERE user_id=$1 AND episode_id=$2",
+                    user_id,
+                    episode_id,
+                )
+                return False
+
+    async def favorite_episodes(self, user_id: int, limit: int = 100):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji
+            FROM favorite_episodes f
+            JOIN episodes e ON e.id=f.episode_id
+            JOIN movies m ON m.id=e.movie_id
+            WHERE f.user_id=$1 AND e.file_id IS NOT NULL
+            ORDER BY f.created_at DESC
+            LIMIT $2
+        """, user_id, limit)
 
     async def set_episode_number(self, episode_id: int, number: int):
         assert self.pool

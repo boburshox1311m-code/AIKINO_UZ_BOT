@@ -116,6 +116,7 @@ def main_menu(is_admin=False):
     rows = [
         [InlineKeyboardButton(text="🎬 Kinolar", callback_data="movies:0")],
         [InlineKeyboardButton(text="▶️ Tomosha qilishni davom ettirish", callback_data="continue")],
+        [InlineKeyboardButton(text="❤️ Sevimlilar", callback_data="favorites")],
         [InlineKeyboardButton(text="🔥 Yangi qismlar", callback_data="latest")],
         [InlineKeyboardButton(text="🔎 Kino qidirish", callback_data="search")],
     ]
@@ -174,7 +175,7 @@ def is_admin(user_id: int, admin_id: int):
     return user_id == admin_id
 
 
-async def episode_markup(db: Database, ep):
+async def episode_markup(db: Database, ep, user_id: int):
     prev_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "prev")
     next_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "next")
     rows = []
@@ -185,6 +186,9 @@ async def episode_markup(db: Database, ep):
         nav.append(InlineKeyboardButton(text="Keyingi qism ➡️", callback_data=f"ep:{next_ep['id']}"))
     if nav:
         rows.append(nav)
+    is_favorite = await db.is_episode_favorite(user_id, ep["id"])
+    favorite_text = "💔 Sevimlilardan olib tashlash" if is_favorite else "❤️ Qismni sevimlilarga qo‘shish"
+    rows.append([InlineKeyboardButton(text=favorite_text, callback_data=f"fave:{ep['id']}")])
     rows.append([InlineKeyboardButton(text="🎬 Barcha qismlar", callback_data=f"movie:{ep['movie_id']}")])
     rows.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -203,7 +207,7 @@ async def send_episode_message(
     await message.answer_video(
         ep["file_id"],
         caption=caption,
-        reply_markup=await episode_markup(db, ep),
+        reply_markup=await episode_markup(db, ep, viewer_user_id or message.chat.id),
         supports_streaming=True,
         protect_content=True,
     )
@@ -296,7 +300,7 @@ async def show_movies(call: CallbackQuery, db: Database):
     await safe_edit(call, text, kb)
 
 
-async def episode_keyboard(db: Database, movie_id: int, page: int):
+async def episode_keyboard(db: Database, movie_id: int, page: int, user_id: int):
     count = await db.episode_count(movie_id)
     page = max(0, min(page, max(0, math.ceil(count / PAGE_EPISODES) - 1)))
     eps = await db.episodes(movie_id, page * PAGE_EPISODES, PAGE_EPISODES)
@@ -311,6 +315,9 @@ async def episode_keyboard(db: Database, movie_id: int, page: int):
         nav.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"moviepage:{movie_id}:{page+1}"))
     if nav:
         b.row(*nav)
+    is_favorite = await db.is_movie_favorite(user_id, movie_id)
+    favorite_text = "💔 Kinoni sevimlilardan olib tashlash" if is_favorite else "❤️ Kinoni sevimlilarga qo‘shish"
+    b.row(InlineKeyboardButton(text=favorite_text, callback_data=f"favm:{movie_id}:{page}"))
     b.row(InlineKeyboardButton(text="🎬 Kinolar", callback_data="movies:0"), InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
     return b.as_markup(), count
 
@@ -331,7 +338,7 @@ async def render_movie(call, db, movie_id, page):
     movie = await db.movie(movie_id)
     if not movie:
         return await safe_edit(call, "Kino topilmadi.", main_menu())
-    kb, count = await episode_keyboard(db, movie_id, page)
+    kb, count = await episode_keyboard(db, movie_id, page, call.from_user.id)
     title = f"{escape(movie['emoji'])} <b>{escape(movie['title'])}</b>"
     description = escape(movie["description"]) if movie["description"] else ""
     status = "Qismni tanlang:" if count else "Hozircha qismlar yo‘q."
@@ -356,6 +363,68 @@ async def send_episode(call: CallbackQuery, db: Database):
         return await call.answer("Video topilmadi.", show_alert=True)
     await send_episode_message(call.message, db, ep["id"], call.from_user.id)
     await call.answer()
+
+
+@router.callback_query(F.data.startswith("favm:"))
+async def toggle_favorite_movie(call: CallbackQuery, db: Database):
+    _, movie_id, page = call.data.split(":")
+    movie = await db.movie(int(movie_id))
+    if not movie:
+        return await call.answer("Kino topilmadi.", show_alert=True)
+    added = await db.toggle_movie_favorite(call.from_user.id, int(movie_id))
+    kb, _ = await episode_keyboard(db, int(movie_id), int(page), call.from_user.id)
+    await call.message.edit_reply_markup(reply_markup=kb)
+    await call.answer("❤️ Kino sevimlilarga qo‘shildi." if added else "Kino sevimlilardan olib tashlandi.")
+
+
+@router.callback_query(F.data.startswith("fave:"))
+async def toggle_favorite_episode(call: CallbackQuery, db: Database):
+    episode_id = int(call.data.split(":")[1])
+    ep = await db.episode(episode_id)
+    if not ep or not ep["file_id"]:
+        return await call.answer("Qism topilmadi.", show_alert=True)
+    added = await db.toggle_episode_favorite(call.from_user.id, episode_id)
+    await call.message.edit_reply_markup(reply_markup=await episode_markup(db, ep, call.from_user.id))
+    await call.answer("❤️ Qism sevimlilarga qo‘shildi." if added else "Qism sevimlilardan olib tashlandi.")
+
+
+@router.callback_query(F.data == "favorites")
+async def favorites(call: CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎬 Sevimli kinolar", callback_data="favorites:movies")],
+        [InlineKeyboardButton(text="🎞 Sevimli qismlar", callback_data="favorites:episodes")],
+        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+    ])
+    await safe_edit(call, "❤️ <b>Sevimlilar</b>\n\nKerakli bo‘limni tanlang:", kb)
+
+
+@router.callback_query(F.data == "favorites:movies")
+async def favorite_movies(call: CallbackQuery, db: Database):
+    items = await db.favorite_movies(call.from_user.id)
+    b = InlineKeyboardBuilder()
+    for movie in items:
+        b.button(text=f"{movie['emoji']} {movie['title']}", callback_data=f"movie:{movie['id']}")
+    b.adjust(1)
+    b.row(InlineKeyboardButton(text="⬅️ Sevimlilar", callback_data="favorites"))
+    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
+    text = "🎬 <b>Sevimli kinolar</b>\n\nKinoni tanlang:" if items else "Hozircha sevimli kinolaringiz yo‘q."
+    await safe_edit(call, text, b.as_markup())
+
+
+@router.callback_query(F.data == "favorites:episodes")
+async def favorite_episodes(call: CallbackQuery, db: Database):
+    items = await db.favorite_episodes(call.from_user.id)
+    b = InlineKeyboardBuilder()
+    for ep in items:
+        b.button(
+            text=f"{ep['movie_emoji']} {ep['movie_title']} — {ep['episode_number']}-QISM",
+            callback_data=f"ep:{ep['id']}",
+        )
+    b.adjust(1)
+    b.row(InlineKeyboardButton(text="⬅️ Sevimlilar", callback_data="favorites"))
+    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
+    text = "🎞 <b>Sevimli qismlar</b>\n\nQismni tanlang:" if items else "Hozircha sevimli qismlaringiz yo‘q."
+    await safe_edit(call, text, b.as_markup())
 
 
 @router.callback_query(F.data == "continue")
