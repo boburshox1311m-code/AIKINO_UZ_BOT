@@ -19,12 +19,21 @@ if [ "$LOCAL_ENABLED" = "1" ] || [ "$LOCAL_ENABLED" = "true" ] || [ "$LOCAL_ENAB
     exit 1
   fi
 
-  export TELEGRAM_LOCAL=1
-  export TELEGRAM_HTTP_PORT=8081
-  export TELEGRAM_HTTP_IP_ADDRESS=127.0.0.1
   export BOT_API_BASE_URL="http://127.0.0.1:8081"
 
-  /docker-entrypoint.sh &
+  mkdir -p /var/lib/telegram-bot-api /tmp/telegram-bot-api
+  chown -R telegram-bot-api:telegram-bot-api /var/lib/telegram-bot-api /tmp/telegram-bot-api
+
+  telegram-bot-api \
+    --api-id="$TELEGRAM_API_ID" \
+    --api-hash="$TELEGRAM_API_HASH" \
+    --local \
+    --http-port=8081 \
+    --http-ip-address=127.0.0.1 \
+    --dir=/var/lib/telegram-bot-api \
+    --temp-dir=/tmp/telegram-bot-api \
+    --username=telegram-bot-api \
+    --groupname=telegram-bot-api &
   BOT_API_PID=$!
 
   echo "Waiting for Local Telegram Bot API..."
