@@ -142,19 +142,40 @@ class MovieRequestFlow(StatesGroup):
     title = State()
 
 
+WELCOME_TEXT = (
+    "👑 <b>AIKINOUZ</b>\n"
+    "<b>PREMIUM KINO PLATFORMASI</b>\n\n"
+    "🎬 Eng yaxshi kino va seriallar — bir joyda.\n"
+    "🔥 Yangiliklar • 💎 VIP kontent • ❤️ Sevimlilar\n\n"
+    "<i>Kerakli bo‘limni tanlang:</i>"
+)
+
+
 def main_menu(is_admin=False):
     rows = [
-        [InlineKeyboardButton(text="🎬 Kinolar", callback_data="movies:0")],
-        [InlineKeyboardButton(text="▶️ Tomosha qilishni davom ettirish", callback_data="continue")],
-        [InlineKeyboardButton(text="❤️ Sevimlilar", callback_data="favorites")],
-        [InlineKeyboardButton(text="💎 VIP bo‘lim", callback_data="vip:0")],
-        [InlineKeyboardButton(text="🔥 Yangi qismlar", callback_data="latest")],
-        [InlineKeyboardButton(text="🔎 Kino qidirish", callback_data="search")],
-        [InlineKeyboardButton(text="🎬 Kino so‘rash", callback_data="requestmovie")],
-        [InlineKeyboardButton(text="ℹ️ AIKINOUZ haqida", callback_data="about")],
+        [
+            InlineKeyboardButton(text="🎬 Kinolar", callback_data="movies:0"),
+            InlineKeyboardButton(text="🔥 Trendda", callback_data="trending"),
+        ],
+        [
+            InlineKeyboardButton(text="🆕 Yangi kinolar", callback_data="newmovies"),
+            InlineKeyboardButton(text="🔥 Yangi qismlar", callback_data="latest"),
+        ],
+        [
+            InlineKeyboardButton(text="▶️ Davom ettirish", callback_data="continue"),
+            InlineKeyboardButton(text="❤️ Sevimlilar", callback_data="favorites"),
+        ],
+        [
+            InlineKeyboardButton(text="💎 VIP", callback_data="vip:0"),
+            InlineKeyboardButton(text="🔎 Qidiruv", callback_data="search"),
+        ],
+        [
+            InlineKeyboardButton(text="🎞 Kino so‘rash", callback_data="requestmovie"),
+            InlineKeyboardButton(text="ℹ️ AIKINOUZ", callback_data="about"),
+        ],
     ]
     if is_admin:
-        rows.append([InlineKeyboardButton(text="🔐 Admin panel", callback_data="admin")])
+        rows.append([InlineKeyboardButton(text="🔐 ADMIN PANEL", callback_data="admin")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -303,8 +324,9 @@ async def send_episode_message(
         and (viewer_user_id is None or not await db.is_vip_user(viewer_user_id))
     ):
         await message.answer(
-            "💎 <b>Bu kino faqat VIP foydalanuvchilar uchun.</b>\n\n"
-            "VIP huquqini olish uchun admin bilan bog‘laning.",
+            "💎 <b>AIKINOUZ VIP</b>\n\n"
+            "👑 Bu kino maxsus VIP kolleksiyaga kiradi.\n"
+            "⭐ VIP paketni faollashtirib, eksklyuziv kontentni oching.",
             reply_markup=vip_locked_markup(),
         )
         return True
@@ -568,7 +590,7 @@ async def start(message: Message, state: FSMContext, admin_id: int, db: Database
         except ValueError:
             pass
     await message.answer(
-        "🎬 <b>AIKINO_UZ botiga xush kelibsiz!</b>\n\nSevimli kino va seriallaringizni tanlang:",
+        WELCOME_TEXT,
         reply_markup=main_menu(is_admin(message.from_user.id, admin_id)),
     )
 
@@ -576,11 +598,12 @@ async def start(message: Message, state: FSMContext, admin_id: int, db: Database
 @router.callback_query(F.data == "home")
 async def home(call: CallbackQuery, state: FSMContext, admin_id: int):
     await state.clear()
-    await safe_edit(call, "🎬 <b>Bosh menyu</b>\n\nKerakli bo‘limni tanlang:", main_menu(is_admin(call.from_user.id, admin_id)))
+    await safe_edit(call, WELCOME_TEXT, main_menu(is_admin(call.from_user.id, admin_id)))
 
 
 ABOUT_TEXT = (
-    "ℹ️ <b>AIKINOUZ haqida</b>\n\n"
+    "👑 <b>AIKINOUZ</b>\n"
+    "<b>PREMIUM KINO PLATFORMASI</b>\n\n"
     "🏢 <b>Kompaniya:</b> AIKINOUZ\n"
     "👑 <b>Kompaniya prezidenti:</b> BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI\n"
     "📧 <b>Email:</b> boburshox1311m@gmail.com\n"
@@ -642,6 +665,42 @@ async def check_subscription(
     )
 
 
+async def premium_movie_feed_markup(items, back="home"):
+    b = InlineKeyboardBuilder()
+    for movie in items:
+        b.button(
+            text=f"{movie['emoji']} {movie['title']}",
+            callback_data=f"movie:{movie['id']}",
+        )
+    b.adjust(2)
+    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data=back))
+    return b.as_markup()
+
+
+@router.callback_query(F.data == "trending")
+async def trending_movies(call: CallbackQuery, db: Database, admin_id: int):
+    items = await db.trending_movies(admin_id, 8)
+    text = (
+        "🔥 <b>TRENDDA HOZIR</b>\n\n"
+        "Eng ko‘p tomosha qilinayotgan kinolar:"
+        if items else
+        "🔥 <b>TRENDDA HOZIR</b>\n\nHozircha ko‘rishlar yetarli emas."
+    )
+    await safe_edit(call, text, await premium_movie_feed_markup(items))
+
+
+@router.callback_query(F.data == "newmovies")
+async def new_movies(call: CallbackQuery, db: Database):
+    items = await db.latest_movies(8)
+    text = (
+        "🆕 <b>YANGI KINOLAR</b>\n\n"
+        "AIKINOUZ'ga eng so‘nggi qo‘shilganlar:"
+        if items else
+        "🆕 <b>YANGI KINOLAR</b>\n\nHozircha kinolar qo‘shilmagan."
+    )
+    await safe_edit(call, text, await premium_movie_feed_markup(items))
+
+
 async def movie_keyboard(db: Database, page: int, prefix="movie", back="home"):
     count = await db.public_movie_count()
     page = max(0, min(page, max(0, math.ceil(count / PAGE_MOVIES) - 1)))
@@ -649,7 +708,7 @@ async def movie_keyboard(db: Database, page: int, prefix="movie", back="home"):
     b = InlineKeyboardBuilder()
     for m in items:
         b.button(text=f"{m['emoji']} {m['title']}", callback_data=f"{prefix}:{m['id']}")
-    b.adjust(1)
+    b.adjust(2)
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"movies:{page-1}"))
@@ -665,7 +724,12 @@ async def movie_keyboard(db: Database, page: int, prefix="movie", back="home"):
 async def show_movies(call: CallbackQuery, db: Database):
     page = int(call.data.split(":")[1])
     kb, count, page = await movie_keyboard(db, page)
-    text = "🎬 <b>Kinolar</b>\n\nKinoni tanlang:" if count else "Hozircha kinolar qo‘shilmagan."
+    text = (
+        "🎬 <b>AIKINOUZ KINO KATALOGI</b>\n\n"
+        "✨ Tomosha qilish uchun kinoni tanlang:"
+        if count else
+        "🎬 <b>AIKINOUZ KINO KATALOGI</b>\n\nHozircha kinolar qo‘shilmagan."
+    )
     await safe_edit(call, text, kb)
 
 
@@ -758,10 +822,16 @@ async def render_movie(call, db, movie_id, page, admin_id):
             vip_locked_markup(),
         )
     kb, count = await episode_keyboard(db, movie_id, page, call.from_user.id)
-    title = f"{escape(movie['emoji'])} <b>{escape(movie['title'])}</b>"
+    title = f"🎬 <b>{escape(movie['title'])}</b>"
     description = escape(movie["description"]) if movie["description"] else ""
-    status = "Qismni tanlang:" if count else "Hozircha qismlar yo‘q."
-    text = f"{title}\n\n{description}\n\n{status}" if description else f"{title}\n\n{status}"
+    access_badge = "💎 VIP" if movie["is_vip"] else "✨ AIKINOUZ"
+    status = f"🎞 <b>{count} ta qism</b> · Kerakli qismni tanlang:" if count else "🎞 Hozircha qismlar yo‘q."
+    text = (
+        f"{title}\n"
+        f"{access_badge}\n\n"
+        + (f"{description}\n\n" if description else "")
+        + f"{status}"
+    )
     if movie["poster_file_id"]:
         if call.message.photo:
             try:
@@ -874,7 +944,7 @@ async def latest(call: CallbackQuery, db: Database):
         b.button(text=f"{e['movie_emoji']} {e['movie_title']} — {e['episode_number']}-QISM", callback_data=f"ep:{e['id']}")
     b.adjust(1)
     b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
-    await safe_edit(call, "🔥 <b>Yangi qismlar</b>\n\nEng oxirgi qo‘shilgan qismlar:", b.as_markup())
+    await safe_edit(call, "🔥 <b>YANGI QISMLAR</b>\n\n🎞 Eng so‘nggi qo‘shilgan qismlar:", b.as_markup())
 
 
 @router.callback_query(F.data == "search")
@@ -890,9 +960,9 @@ async def search_result(message: Message, state: FSMContext, db: Database):
     b = InlineKeyboardBuilder()
     for m in items:
         b.button(text=f"{m['emoji']} {m['title']}", callback_data=f"movie:{m['id']}")
-    b.adjust(1)
+    b.adjust(2)
     b.row(InlineKeyboardButton(text="🔎 Yana qidirish", callback_data="search"), InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
-    text = "Topilgan kinolar:" if items else "Bu nomdagi kino topilmadi."
+    text = "🔎 <b>QIDIRUV NATIJALARI</b>\n\nTopilgan kinolar:" if items else "🔎 <b>QIDIRUV</b>\n\nBu nomdagi kino topilmadi."
     await message.answer(text, reply_markup=b.as_markup())
 
 
