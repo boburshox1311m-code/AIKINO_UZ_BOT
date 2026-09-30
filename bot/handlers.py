@@ -2136,6 +2136,11 @@ async def add_ep_video(
     if not is_admin(message.from_user.id, admin_id): return
     data = await state.get_data()
     await db.set_episode_video(data["episode_id"], message.video.file_id, message.video.file_unique_id)
+    await db.mark_episode_storage_pending(
+        data["episode_id"],
+        message.video.mime_type,
+        message.video.file_size,
+    )
     await record_admin_action(db, message.from_user, "▶️ Qism videosi saqlandi", f"{data['episode_number']}-QISM")
     await state.clear()
     await message.answer(f"✅ {data['episode_number']}-QISM videosi saqlandi va foydalanuvchilarga ochildi.", reply_markup=admin_menu())
@@ -2213,8 +2218,13 @@ async def bulk_video_save(message: Message, state: FSMContext, db: Database, adm
         return
     data = await state.get_data()
     number = data["next_episode_number"]
-    await db.upsert_episode(
+    ep = await db.upsert_episode(
         data["movie_id"], number, message.video.file_id, message.video.file_unique_id
+    )
+    await db.mark_episode_storage_pending(
+        ep["id"],
+        message.video.mime_type,
+        message.video.file_size,
     )
     await record_admin_action(db, message.from_user, "📚 Ketma-ket qism yuklandi", f"{number}-QISM")
     uploaded_count = data["uploaded_count"] + 1
@@ -2447,6 +2457,11 @@ async def replace_video_save(message: Message, state: FSMContext, db: Database, 
     if not is_admin(message.from_user.id, admin_id): return
     data = await state.get_data()
     await db.set_episode_video(data["episode_id"], message.video.file_id, message.video.file_unique_id)
+    await db.mark_episode_storage_pending(
+        data["episode_id"],
+        message.video.mime_type,
+        message.video.file_size,
+    )
     await record_admin_action(db, message.from_user, "📹 Qism videosi almashtirildi", f"Qism ID: {data['episode_id']}")
     await state.clear()
     await message.answer("✅ Video saqlandi/almashtirildi.", reply_markup=admin_menu())
