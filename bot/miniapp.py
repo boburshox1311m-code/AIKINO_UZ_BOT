@@ -57,7 +57,7 @@ def _movie_json(movie) -> dict:
         "is_vip": bool(movie["is_vip"]),
         "views": views,
         "badge": badge,
-        "episode_count": int(movie.get("episode_count", 0) or 0),
+        "episode_count": int(movie["episode_count"] or 0) if "episode_count" in movie.keys() else 0,
         "poster_url": f"/app/poster/{movie['id']}" if movie["poster_file_id"] else None,
     }
 
