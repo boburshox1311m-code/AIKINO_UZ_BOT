@@ -11,6 +11,7 @@ from aiohttp import ClientSession, web
 from aiogram import Bot
 
 from .database import Database
+from .storage import R2Storage
 
 POSTER_CACHE: dict[int, bytes] = {}
 
@@ -82,6 +83,7 @@ async def api_movie(request: web.Request) -> web.Response:
     db: Database = request.app["db"]
     bot: Bot = request.app["bot"]
     admin_id: int = request.app["admin_id"]
+    storage: R2Storage = request.app["storage"]
     try:
         movie_id = int(request.match_info["movie_id"])
     except ValueError:
@@ -101,12 +103,22 @@ async def api_movie(request: web.Request) -> web.Response:
     expires = int(time.time()) + 6 * 60 * 60
     payload = []
     for ep in episodes:
-        item = {"id": int(ep["id"]), "number": int(ep["episode_number"])}
+        item = {
+            "id": int(ep["id"]),
+            "number": int(ep["episode_number"]),
+            "storage_status": ep["storage_status"] if "storage_status" in ep.keys() else "pending",
+        }
         if can_stream:
-            sig = _stream_signature(bot.token, int(ep["id"]), user_id, expires)
-            item["stream_url"] = f"/app/stream/{ep['id']}?u={user_id}&e={expires}&s={sig}"
+            if storage.enabled and "r2_key" in ep.keys() and ep["r2_key"]:
+                item["stream_url"] = storage.presigned_get(ep["r2_key"], expires=7200)
+                item["stream_source"] = "r2"
+            else:
+                sig = _stream_signature(bot.token, int(ep["id"]), user_id, expires)
+                item["stream_url"] = f"/app/stream/{ep['id']}?u={user_id}&e={expires}&s={sig}"
+                item["stream_source"] = "telegram"
         else:
             item["stream_url"] = None
+            item["stream_source"] = None
         payload.append(item)
     data["episodes"] = payload
     data["stream_locked"] = bool(movie["is_vip"] and not can_stream)
@@ -223,6 +235,21 @@ async def stream_episode(request: web.Request) -> web.StreamResponse:
             exc,
         )
         raise web.HTTPBadGateway(text="Telegram video faylini ochib bo‘lmadi")
+
+    local_path = str(tg_file.file_path or "")
+    if local_path and __import__("os").path.isabs(local_path) and __import__("os").path.isfile(local_path):
+        try:
+            await db.save_watch_progress(user_id, episode_id)
+            await db.record_episode_view(user_id, episode_id)
+        except Exception:
+            pass
+        return web.FileResponse(
+            path=local_path,
+            headers={
+                "Content-Type": ep["mime_type"] or "video/mp4",
+                "Cache-Control": "private, no-store",
+            },
+        )
 
     file_url = f"https://api.telegram.org/file/bot{bot.token}/{tg_file.file_path}"
     range_header = request.headers.get("Range")
