@@ -214,7 +214,14 @@ async def stream_episode(request: web.Request) -> web.StreamResponse:
 
     try:
         tg_file = await bot.get_file(ep["file_id"])
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception(
+            "Mini App stream get_file failed: episode_id=%s user_id=%s error=%s",
+            episode_id,
+            user_id,
+            exc,
+        )
         raise web.HTTPBadGateway(text="Telegram video faylini ochib bo‘lmadi")
 
     file_url = f"https://api.telegram.org/file/bot{bot.token}/{tg_file.file_path}"
@@ -225,6 +232,14 @@ async def stream_episode(request: web.Request) -> web.StreamResponse:
         async with ClientSession() as session:
             async with session.get(file_url, headers=upstream_headers) as upstream:
                 if upstream.status not in (200, 206):
+                    import logging
+                    body = await upstream.text()
+                    logging.getLogger(__name__).error(
+                        "Mini App upstream stream failed: episode_id=%s status=%s body=%s",
+                        episode_id,
+                        upstream.status,
+                        body[:300],
+                    )
                     raise web.HTTPBadGateway(text="Video stream vaqtincha mavjud emas")
                 headers = {
                     "Content-Type": upstream.headers.get("Content-Type", "video/mp4"),
@@ -382,7 +397,7 @@ button{cursor:pointer}
 .videoStage video{width:100%;height:100%;object-fit:contain;background:#000}
 .playerControls{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;background:linear-gradient(180deg,#000b 0%,transparent 32%,transparent 62%,#000d 100%);opacity:1;transition:opacity .22s ease}
 .playerControls.hiddenControls{opacity:0;pointer-events:none}
-.playerTop{display:flex;align-items:center;gap:11px;padding:calc(16px + env(safe-area-inset-top)) 16px 10px}
+.playerTop{display:flex;align-items:center;gap:11px;padding:calc(96px + env(safe-area-inset-top)) 16px 10px}
 .playerClose{width:40px;height:40px;border:0;border-radius:50%;background:#161616c9;color:#fff;font-size:22px}
 .playerHeading{min-width:0}.playerMovieTitle{font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.playerEpisodeTitle{font-size:11px;color:#c7c7c7;margin-top:2px}
 .playerCenter{display:flex;align-items:center;justify-content:center;gap:24px}
@@ -400,7 +415,7 @@ button{cursor:pointer}
 .playlistItems{display:grid;gap:8px}.playlistItem{display:flex;justify-content:space-between;align-items:center;border:1px solid #29251d;background:#111;color:#fff;border-radius:13px;padding:12px;text-align:left}.playlistItem.active{border-color:#b77a1d;background:#1c160d;color:#f5ca61}
 .playerError{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:30px;color:#fff;background:#050505}.playerError.show{display:grid}
 @media (orientation:landscape){
-  .playerTop{padding-top:calc(8px + env(safe-area-inset-top))}
+  .playerTop{padding-top:calc(54px + env(safe-area-inset-top))}
   .playerBottom{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
   .playlistDrawer{left:auto;top:0;right:0;bottom:0;width:min(380px,42vw);max-height:none;border-radius:20px 0 0 20px;border-top:0;border-left:1px solid #3b3021;transform:translateX(105%)}
   .playlistDrawer.open{transform:translateX(0)}
@@ -501,7 +516,7 @@ button{cursor:pointer}
 <div id="playerOverlay" class="playerOverlay">
   <div id="videoStage" class="videoStage">
     <video id="playerVideo" playsinline preload="metadata"></video>
-    <div id="playerError" class="playerError"><div><div style="font-size:42px">⚠️</div><h3>Video ochilmadi</h3><p>Bu qismni hozir stream qilib bo‘lmadi.</p></div></div>
+    <div id="playerError" class="playerError"><div><div style="font-size:42px">⚠️</div><h3>Video stream ochilmadi</h3><p id="playerErrorText">Bu video Telegram stream limitidan katta bo‘lishi mumkin.</p></div></div>
     <div id="playerControls" class="playerControls">
       <div class="playerTop">
         <button id="playerClose" class="playerClose">×</button>
