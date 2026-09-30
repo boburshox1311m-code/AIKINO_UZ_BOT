@@ -582,4 +582,4 @@ button{cursor:pointer}
 })();
 </script>
 </body>
-</html>"""\n
+</html>"""
