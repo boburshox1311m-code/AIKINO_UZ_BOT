@@ -151,6 +151,7 @@ def main_menu(is_admin=False):
         [InlineKeyboardButton(text="🔥 Yangi qismlar", callback_data="latest")],
         [InlineKeyboardButton(text="🔎 Kino qidirish", callback_data="search")],
         [InlineKeyboardButton(text="🎬 Kino so‘rash", callback_data="requestmovie")],
+        [InlineKeyboardButton(text="ℹ️ AIKINOUZ haqida", callback_data="about")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton(text="🔐 Admin panel", callback_data="admin")])
@@ -576,6 +577,34 @@ async def start(message: Message, state: FSMContext, admin_id: int, db: Database
 async def home(call: CallbackQuery, state: FSMContext, admin_id: int):
     await state.clear()
     await safe_edit(call, "🎬 <b>Bosh menyu</b>\n\nKerakli bo‘limni tanlang:", main_menu(is_admin(call.from_user.id, admin_id)))
+
+
+ABOUT_TEXT = (
+    "ℹ️ <b>AIKINOUZ haqida</b>\n\n"
+    "🏢 <b>Kompaniya:</b> AIKINOUZ\n"
+    "👑 <b>Kompaniya prezidenti:</b> BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI\n"
+    "📧 <b>Email:</b> boburshox1311m@gmail.com\n"
+    "🧩 <b>Project:</b> AIKINOUZ / AIKINO_UZ_BOT\n\n"
+    "© 2026 AIKINOUZ. All rights reserved.\n"
+    "<i>Project owner / author attribution: BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI.</i>"
+)
+
+
+def about_markup():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 @AIKINOUZ kanal", url="https://t.me/AIKINOUZ")],
+        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+    ])
+
+
+@router.callback_query(F.data == "about")
+async def about_project(call: CallbackQuery):
+    await safe_edit(call, ABOUT_TEXT, about_markup())
+
+
+@router.message(Command("about"))
+async def about_project_command(message: Message):
+    await message.answer(ABOUT_TEXT, reply_markup=about_markup())
 
 
 @router.callback_query(F.data == "cancel")
