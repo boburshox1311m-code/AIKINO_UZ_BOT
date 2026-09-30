@@ -2,6 +2,19 @@
 
 Professional Uzbek-language movie/series catalogue bot with a phone-friendly admin panel.
 
+## Project ownership
+
+- **Company:** AIKINOUZ
+- **President:** BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI
+- **Email:** boburshox1311m@gmail.com
+- **Project:** AIKINOUZ / AIKINO_UZ_BOT
+
+### Copyright
+
+© 2026 AIKINOUZ.  
+Project owner / author attribution: **BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI**.  
+All rights reserved.
+
 ## Environment variables
 
 - `BOT_TOKEN` — token from BotFather (secret)
