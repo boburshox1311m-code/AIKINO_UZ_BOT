@@ -197,8 +197,14 @@ class Database:
     async def public_movies(self, offset=0, limit=10):
         assert self.pool
         return await self.pool.fetch("""
-            SELECT * FROM movies WHERE is_vip=FALSE
-            ORDER BY created_at DESC, id DESC OFFSET $1 LIMIT $2
+            SELECT m.*, COUNT(v.id) AS view_count
+            FROM movies m
+            LEFT JOIN episodes e ON e.movie_id=m.id
+            LEFT JOIN episode_views v ON v.episode_id=e.id
+            WHERE m.is_vip=FALSE
+            GROUP BY m.id
+            ORDER BY m.created_at DESC, m.id DESC
+            OFFSET $1 LIMIT $2
         """, offset, limit)
 
     async def public_movie_count(self):
@@ -208,9 +214,13 @@ class Database:
     async def latest_movies(self, limit: int = 8):
         assert self.pool
         return await self.pool.fetch("""
-            SELECT * FROM movies
-            WHERE is_vip=FALSE
-            ORDER BY created_at DESC, id DESC
+            SELECT m.*, COUNT(v.id) AS view_count
+            FROM movies m
+            LEFT JOIN episodes e ON e.movie_id=m.id
+            LEFT JOIN episode_views v ON v.episode_id=e.id
+            WHERE m.is_vip=FALSE
+            GROUP BY m.id
+            ORDER BY m.created_at DESC, m.id DESC
             LIMIT $1
         """, limit)
 
@@ -223,6 +233,7 @@ class Database:
             LEFT JOIN episode_views v ON v.episode_id=e.id AND v.user_id<>$1
             WHERE m.is_vip=FALSE
             GROUP BY m.id
+            HAVING COUNT(v.id) >= 1000
             ORDER BY COUNT(v.id) DESC, m.created_at DESC, m.id DESC
             LIMIT $2
         """, admin_id, limit)
@@ -240,7 +251,14 @@ class Database:
 
     async def movie(self, movie_id: int):
         assert self.pool
-        return await self.pool.fetchrow("SELECT * FROM movies WHERE id=$1", movie_id)
+        return await self.pool.fetchrow("""
+            SELECT m.*, COUNT(v.id) AS view_count
+            FROM movies m
+            LEFT JOIN episodes e ON e.movie_id=m.id
+            LEFT JOIN episode_views v ON v.episode_id=e.id
+            WHERE m.id=$1
+            GROUP BY m.id
+        """, movie_id)
 
     async def search_movies(self, query: str, limit=20):
         assert self.pool
