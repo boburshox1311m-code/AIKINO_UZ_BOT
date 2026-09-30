@@ -5,6 +5,7 @@ import math
 import re
 import logging
 import time
+import os
 from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Any, Awaitable, Callable
@@ -17,7 +18,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramFor
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, PreCheckoutQuery
+from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, PreCheckoutQuery, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import Database
@@ -156,7 +157,14 @@ def build_welcome(first_name: str, vip_active: bool = False) -> str:
 
 
 def main_menu(is_admin=False):
-    rows = [
+    public_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+    mini_app_url = f"https://{public_domain}/app" if public_domain else None
+    rows = []
+    if mini_app_url:
+        rows.append([
+            InlineKeyboardButton(text="🎬 AIKINOUZ APP", web_app=WebAppInfo(url=mini_app_url))
+        ])
+    rows += [
         [
             InlineKeyboardButton(text="🎬 Katalog", callback_data="movies:0"),
             InlineKeyboardButton(text="🔥 Trend", callback_data="trending"),
