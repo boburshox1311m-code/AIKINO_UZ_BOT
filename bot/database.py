@@ -224,6 +224,31 @@ class Database:
             LIMIT $1
         """, limit)
 
+    async def miniapp_movies(self, limit: int = 100):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT m.*, COUNT(v.id) AS view_count,
+                   COUNT(DISTINCT e.id) FILTER (WHERE e.file_id IS NOT NULL) AS episode_count
+            FROM movies m
+            LEFT JOIN episodes e ON e.movie_id=m.id
+            LEFT JOIN episode_views v ON v.episode_id=e.id
+            GROUP BY m.id
+            ORDER BY m.created_at DESC, m.id DESC
+            LIMIT $1
+        """, limit)
+
+    async def movie_with_stats(self, movie_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT m.*, COUNT(v.id) AS view_count,
+                   COUNT(DISTINCT e.id) FILTER (WHERE e.file_id IS NOT NULL) AS episode_count
+            FROM movies m
+            LEFT JOIN episodes e ON e.movie_id=m.id
+            LEFT JOIN episode_views v ON v.episode_id=e.id
+            WHERE m.id=$1
+            GROUP BY m.id
+        """, movie_id)
+
     async def trending_movies(self, admin_id: int, limit: int = 8):
         assert self.pool
         return await self.pool.fetch("""
