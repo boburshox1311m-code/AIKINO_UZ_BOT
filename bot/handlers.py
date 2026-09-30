@@ -780,8 +780,9 @@ async def vip_movies(call: CallbackQuery, db: Database, admin_id: int):
     if call.from_user.id != admin_id and not vip:
         return await safe_edit(
             call,
-            "💎 <b>VIP bo‘lim</b>\n\n"
-            "Sizda hozircha faol VIP huquqi yo‘q. VIP olish uchun admin bilan bog‘laning.",
+            "💎 <b>AIKINOUZ VIP</b>\n\n"
+            "👑 Eksklyuziv kinolar va maxsus kontent shu yerda.\n"
+            "⭐ VIP paketni faollashtirib bo‘limni oching.",
             vip_locked_markup(),
         )
     page = int(call.data.split(":")[1])
@@ -791,9 +792,9 @@ async def vip_movies(call: CallbackQuery, db: Database, admin_id: int):
     else:
         expiry = f"VIP muddati: {vip['expires_at'].astimezone(LONDON_TZ).strftime('%d.%m.%Y %H:%M')} gacha"
     text = (
-        f"💎 <b>VIP kinolar</b>\n\n{expiry}\n\nKinoni tanlang:"
+        f"💎 <b>AIKINOUZ VIP KOLLEKSIYA</b>\n\n{expiry}\n\nEksklyuziv kinoni tanlang:"
         if count else
-        f"💎 <b>VIP kinolar</b>\n\n{expiry}\n\nHozircha VIP kinolar qo‘shilmagan."
+        f"💎 <b>AIKINOUZ VIP KOLLEKSIYA</b>\n\n{expiry}\n\nHozircha VIP kinolar qo‘shilmagan."
     )
     await safe_edit(call, text, kb)
 
@@ -985,9 +986,12 @@ async def search_result(message: Message, state: FSMContext, db: Database):
     items = await db.search_movies(message.text)
     b = InlineKeyboardBuilder()
     for m in items:
-        b.button(text=f"{m['emoji']} {m['title']}", callback_data=f"movie:{m['id']}")
-    b.adjust(2)
-    b.row(InlineKeyboardButton(text="🔎 Yana qidirish", callback_data="search"), InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
+        b.button(text=f"🎬 {m['title']}", callback_data=f"movie:{m['id']}")
+    b.adjust(1)
+    b.row(
+        InlineKeyboardButton(text="🔎 Yana qidirish", callback_data="search"),
+        InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"),
+    )
     text = "🔎 <b>QIDIRUV NATIJALARI</b>\n\nTopilgan kinolar:" if items else "🔎 <b>QIDIRUV</b>\n\nBu nomdagi kino topilmadi."
     await message.answer(text, reply_markup=b.as_markup())
 
