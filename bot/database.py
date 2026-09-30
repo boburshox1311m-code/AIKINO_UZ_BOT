@@ -205,6 +205,28 @@ class Database:
         assert self.pool
         return await self.pool.fetchval("SELECT COUNT(*) FROM movies WHERE is_vip=FALSE")
 
+    async def latest_movies(self, limit: int = 8):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT * FROM movies
+            WHERE is_vip=FALSE
+            ORDER BY created_at DESC, id DESC
+            LIMIT $1
+        """, limit)
+
+    async def trending_movies(self, admin_id: int, limit: int = 8):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT m.*, COUNT(v.id) AS view_count
+            FROM movies m
+            LEFT JOIN episodes e ON e.movie_id=m.id
+            LEFT JOIN episode_views v ON v.episode_id=e.id AND v.user_id<>$1
+            WHERE m.is_vip=FALSE
+            GROUP BY m.id
+            ORDER BY COUNT(v.id) DESC, m.created_at DESC, m.id DESC
+            LIMIT $2
+        """, admin_id, limit)
+
     async def vip_movies(self, offset=0, limit=10):
         assert self.pool
         return await self.pool.fetch("""
