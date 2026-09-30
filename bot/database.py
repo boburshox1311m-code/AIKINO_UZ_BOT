@@ -329,7 +329,11 @@ class Database:
             ON CONFLICT(movie_id, episode_number) DO UPDATE SET
                 file_id=COALESCE(EXCLUDED.file_id, episodes.file_id),
                 file_unique_id=COALESCE(EXCLUDED.file_unique_id, episodes.file_unique_id),
-                caption=COALESCE(EXCLUDED.caption, episodes.caption)
+                caption=COALESCE(EXCLUDED.caption, episodes.caption),
+                r2_key=CASE WHEN EXCLUDED.file_id IS NOT NULL THEN NULL ELSE episodes.r2_key END,
+                storage_status=CASE WHEN EXCLUDED.file_id IS NOT NULL THEN 'pending' ELSE episodes.storage_status END,
+                storage_error=CASE WHEN EXCLUDED.file_id IS NOT NULL THEN NULL ELSE episodes.storage_error END,
+                storage_attempts=CASE WHEN EXCLUDED.file_id IS NOT NULL THEN 0 ELSE episodes.storage_attempts END
             RETURNING *
         """, movie_id, number, file_id, file_unique_id, caption)
 
@@ -982,7 +986,16 @@ class Database:
 
     async def set_episode_video(self, episode_id: int, file_id: str, file_unique_id: str | None):
         assert self.pool
-        return await self.pool.execute("UPDATE episodes SET file_id=$2,file_unique_id=$3 WHERE id=$1", episode_id, file_id, file_unique_id)
+        return await self.pool.execute("""
+            UPDATE episodes
+            SET file_id=$2,
+                file_unique_id=$3,
+                r2_key=NULL,
+                storage_status='pending',
+                storage_error=NULL,
+                storage_attempts=0
+            WHERE id=$1
+        """, episode_id, file_id, file_unique_id)
 
     async def delete_episode(self, episode_id: int):
         assert self.pool
