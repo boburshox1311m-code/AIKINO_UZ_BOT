@@ -690,7 +690,7 @@ async def premium_movie_feed_markup(items, back="home"):
     b = InlineKeyboardBuilder()
     for movie in items:
         b.button(
-            text=f"{popularity_badge(movie['view_count']) + ' ' if popularity_badge(movie['view_count']) else ''}{movie['emoji']} {movie['title']}",
+            text=f"{popularity_badge(movie['view_count']) + ' ' if popularity_badge(movie['view_count']) else ''}🎬 {movie['title']}",
             callback_data=f"movie:{movie['id']}",
         )
     b.adjust(1)
@@ -729,7 +729,7 @@ async def movie_keyboard(db: Database, page: int, prefix="movie", back="home"):
     b = InlineKeyboardBuilder()
     for m in items:
         badge = popularity_badge(m["view_count"])
-        b.button(text=f"{badge + ' ' if badge else ''}{m['title']}", callback_data=f"{prefix}:{m['id']}")
+        b.button(text=f"{badge + ' ' if badge else ''}🎬 {m['title']}", callback_data=f"{prefix}:{m['id']}")
     b.adjust(1)
     nav = []
     if page > 0:
@@ -761,7 +761,7 @@ async def vip_movie_keyboard(db: Database, page: int):
     items = await db.vip_movies(page * PAGE_MOVIES, PAGE_MOVIES)
     b = InlineKeyboardBuilder()
     for movie in items:
-        b.button(text=f"💎 {movie['title']}", callback_data=f"movie:{movie['id']}")
+        b.button(text=f"💎 🎬 {movie['title']}", callback_data=f"movie:{movie['id']}")
     b.adjust(1)
     nav = []
     if page > 0:
@@ -925,7 +925,7 @@ async def favorite_movies(call: CallbackQuery, db: Database, admin_id: int):
         items = [movie for movie in items if not movie["is_vip"]]
     b = InlineKeyboardBuilder()
     for movie in items:
-        b.button(text=f"❤️ {movie['title']}", callback_data=f"movie:{movie['id']}")
+        b.button(text=f"❤️ 🎬 {movie['title']}", callback_data=f"movie:{movie['id']}")
     b.adjust(1)
     b.row(InlineKeyboardButton(text="⬅️ Sevimlilar", callback_data="favorites"))
     b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
