@@ -289,6 +289,17 @@ def format_number(value: int) -> str:
     return f"{int(value):,}".replace(",", " ")
 
 
+def popularity_badge(view_count: int) -> str:
+    views = int(view_count or 0)
+    if views >= 10000:
+        return "👑 TOP"
+    if views >= 5000:
+        return "🔥 TREND"
+    if views >= 1000:
+        return "🔥 HOT"
+    return ""
+
+
 async def episode_markup(db: Database, ep, user_id: int):
     prev_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "prev")
     next_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "next")
@@ -669,7 +680,7 @@ async def premium_movie_feed_markup(items, back="home"):
     b = InlineKeyboardBuilder()
     for movie in items:
         b.button(
-            text=f"{movie['emoji']} {movie['title']}",
+            text=f"{popularity_badge(movie['view_count']) + ' ' if popularity_badge(movie['view_count']) else ''}{movie['emoji']} {movie['title']}",
             callback_data=f"movie:{movie['id']}",
         )
     b.adjust(2)
@@ -682,9 +693,9 @@ async def trending_movies(call: CallbackQuery, db: Database, admin_id: int):
     items = await db.trending_movies(admin_id, 8)
     text = (
         "🔥 <b>TRENDDA HOZIR</b>\n\n"
-        "Eng ko‘p tomosha qilinayotgan kinolar:"
+        "1000+ ko‘rilgan eng mashhur kinolar:"
         if items else
-        "🔥 <b>TRENDDA HOZIR</b>\n\nHozircha ko‘rishlar yetarli emas."
+        "🔥 <b>TRENDDA HOZIR</b>\n\nHozircha 1000 ta ko‘rishga yetgan kino yo‘q."
     )
     await safe_edit(call, text, await premium_movie_feed_markup(items))
 
@@ -707,7 +718,8 @@ async def movie_keyboard(db: Database, page: int, prefix="movie", back="home"):
     items = await db.public_movies(page * PAGE_MOVIES, PAGE_MOVIES)
     b = InlineKeyboardBuilder()
     for m in items:
-        b.button(text=f"{m['emoji']} {m['title']}", callback_data=f"{prefix}:{m['id']}")
+        badge = popularity_badge(m["view_count"])
+        b.button(text=f"{badge + ' ' if badge else ''}{m['emoji']} {m['title']}", callback_data=f"{prefix}:{m['id']}")
     b.adjust(2)
     nav = []
     if page > 0:
@@ -826,10 +838,13 @@ async def render_movie(call, db, movie_id, page, admin_id):
     title = f"🎬 <b>{escape(movie['title'])}</b>"
     description = escape(movie["description"]) if movie["description"] else ""
     access_badge = "💎 VIP" if movie["is_vip"] else "✨ AIKINOUZ"
+    views = int(movie["view_count"] or 0)
+    hot_badge = popularity_badge(views)
+    popularity_line = f"{hot_badge} · 👁 {format_number(views)} ko‘rish" if hot_badge else f"👁 {format_number(views)} ko‘rish"
     status = f"🎞 <b>{count} ta qism</b> · Kerakli qismni tanlang:" if count else "🎞 Hozircha qismlar yo‘q."
     text = (
         f"{title}\n"
-        f"{access_badge}\n\n"
+        f"{access_badge} · {popularity_line}\n\n"
         + (f"{description}\n\n" if description else "")
         + f"{status}"
     )
