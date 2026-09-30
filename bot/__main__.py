@@ -4,11 +4,14 @@ import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 
 from .database import Database
 from .handlers import router
 from .payment_web import start_payment_web
+from .storage import R2Storage, storage_worker
 
 
 async def main() -> None:
@@ -25,18 +28,48 @@ async def main() -> None:
     await db.connect()
     await db.init_schema()
 
-    bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    local_api = (
+        os.environ.get("BOT_API_LOCAL", "").strip().lower() in {"1", "true", "yes"}
+        and bool(os.environ.get("TELEGRAM_API_ID"))
+        and bool(os.environ.get("TELEGRAM_API_HASH"))
+    )
+    default_props = DefaultBotProperties(parse_mode=ParseMode.HTML)
+    if local_api:
+        if await db.get_setting("local_bot_api_logged_out", "false") != "true":
+            cloud_bot = Bot(token=token, default=default_props)
+            try:
+                await cloud_bot.log_out()
+                await db.set_setting("local_bot_api_logged_out", "true")
+            finally:
+                await cloud_bot.session.close()
+        api_base = os.environ.get("BOT_API_BASE_URL", "http://127.0.0.1:8081").rstrip("/")
+        session = AiohttpSession(
+            api=TelegramAPIServer.from_base(api_base, is_local=True)
+        )
+        bot = Bot(token=token, session=session, default=default_props)
+        logging.getLogger(__name__).info("Using Local Telegram Bot API: %s", api_base)
+    else:
+        bot = Bot(token=token, default=default_props)
     dp = Dispatcher()
     dp["db"] = db
     dp["admin_id"] = int(admin_id)
     dp["channel_id"] = channel_id
     dp["payment_url"] = payment_url
     dp.include_router(router)
-    web_runner = await start_payment_web(bot, db, int(admin_id))
+    storage = R2Storage()
+    dp["storage"] = storage
+    web_runner = await start_payment_web(bot, db, int(admin_id), storage)
+    storage_stop = asyncio.Event()
+    storage_task = asyncio.create_task(storage_worker(db, bot, storage, storage_stop))
     try:
         await bot.delete_webhook(drop_pending_updates=False)
         await dp.start_polling(bot)
     finally:
+        storage_stop.set()
+        try:
+            await storage_task
+        except asyncio.CancelledError:
+            pass
         await web_runner.cleanup()
         await db.close()
         await bot.session.close()
