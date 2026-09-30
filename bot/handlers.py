@@ -740,7 +740,7 @@ async def vip_movie_keyboard(db: Database, page: int):
     b = InlineKeyboardBuilder()
     for movie in items:
         b.button(text=f"💎 {movie['title']}", callback_data=f"movie:{movie['id']}")
-    b.adjust(1)
+    b.adjust(2)
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"vip:{page-1}"))
@@ -817,8 +817,9 @@ async def render_movie(call, db, movie_id, page, admin_id):
     if movie["is_vip"] and call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
         return await safe_edit(
             call,
-            "💎 <b>Bu kino faqat VIP foydalanuvchilar uchun.</b>\n\n"
-            "VIP huquqini olish uchun admin bilan bog‘laning.",
+            "💎 <b>AIKINOUZ VIP</b>\n\n"
+            "👑 Bu kino maxsus VIP kolleksiyaga kiradi.\n"
+            "⭐ VIP paketni faollashtirib, eksklyuziv kontentni oching.",
             vip_locked_markup(),
         )
     kb, count = await episode_keyboard(db, movie_id, page, call.from_user.id)
@@ -899,7 +900,7 @@ async def favorite_movies(call: CallbackQuery, db: Database, admin_id: int):
     b = InlineKeyboardBuilder()
     for movie in items:
         b.button(text=f"{movie['emoji']} {movie['title']}", callback_data=f"movie:{movie['id']}")
-    b.adjust(1)
+    b.adjust(2)
     b.row(InlineKeyboardButton(text="⬅️ Sevimlilar", callback_data="favorites"))
     b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
     text = "🎬 <b>Sevimli kinolar</b>\n\nKinoni tanlang:" if items else "Hozircha sevimli kinolaringiz yo‘q."
