@@ -41,7 +41,14 @@ class Database:
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE(movie_id, episode_number)
             );
+            ALTER TABLE episodes ADD COLUMN IF NOT EXISTS r2_key TEXT;
+            ALTER TABLE episodes ADD COLUMN IF NOT EXISTS storage_status TEXT NOT NULL DEFAULT 'pending';
+            ALTER TABLE episodes ADD COLUMN IF NOT EXISTS storage_error TEXT;
+            ALTER TABLE episodes ADD COLUMN IF NOT EXISTS storage_attempts INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE episodes ADD COLUMN IF NOT EXISTS video_size BIGINT;
+            ALTER TABLE episodes ADD COLUMN IF NOT EXISTS mime_type TEXT;
             CREATE INDEX IF NOT EXISTS episodes_movie_number_idx ON episodes(movie_id, episode_number);
+            CREATE INDEX IF NOT EXISTS episodes_storage_status_idx ON episodes(storage_status, id);
             CREATE TABLE IF NOT EXISTS watch_progress (
                 user_id BIGINT PRIMARY KEY,
                 episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
@@ -349,6 +356,72 @@ class Database:
                    m.is_vip AS movie_is_vip
             FROM episodes e JOIN movies m ON m.id=e.movie_id WHERE e.id=$1
         """, episode_id)
+
+    async def episodes_needing_storage(self, limit: int = 2):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT e.*
+            FROM episodes e
+            WHERE e.file_id IS NOT NULL
+              AND e.r2_key IS NULL
+              AND e.storage_attempts < 8
+              AND e.storage_status IN ('pending', 'failed')
+            ORDER BY e.id
+            LIMIT $1
+        """, limit)
+
+    async def mark_episode_storage_pending(
+        self,
+        episode_id: int,
+        mime_type: str | None = None,
+        video_size: int | None = None,
+    ):
+        assert self.pool
+        return await self.pool.execute("""
+            UPDATE episodes
+            SET storage_status='pending',
+                storage_error=NULL,
+                mime_type=COALESCE($2, mime_type),
+                video_size=COALESCE($3, video_size)
+            WHERE id=$1
+        """, episode_id, mime_type, video_size)
+
+    async def mark_episode_storage_uploading(self, episode_id: int):
+        assert self.pool
+        return await self.pool.execute("""
+            UPDATE episodes
+            SET storage_status='uploading',
+                storage_attempts=storage_attempts+1,
+                storage_error=NULL
+            WHERE id=$1
+        """, episode_id)
+
+    async def mark_episode_storage_ready(
+        self,
+        episode_id: int,
+        r2_key: str,
+        video_size: int | None,
+        mime_type: str | None,
+    ):
+        assert self.pool
+        return await self.pool.execute("""
+            UPDATE episodes
+            SET r2_key=$2,
+                storage_status='ready',
+                storage_error=NULL,
+                video_size=COALESCE($3, video_size),
+                mime_type=COALESCE($4, mime_type)
+            WHERE id=$1
+        """, episode_id, r2_key, video_size, mime_type)
+
+    async def mark_episode_storage_failed(self, episode_id: int, error: str):
+        assert self.pool
+        return await self.pool.execute("""
+            UPDATE episodes
+            SET storage_status='failed',
+                storage_error=$2
+            WHERE id=$1
+        """, episode_id, error)
 
     async def adjacent_episode(self, movie_id: int, number: int, direction: str):
         assert self.pool
