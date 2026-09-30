@@ -8,7 +8,8 @@ RUN apk add --no-cache \
     gcc \
     musl-dev \
     postgresql-dev \
-    netcat-openbsd
+    netcat-openbsd \
+    tzdata
 
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
