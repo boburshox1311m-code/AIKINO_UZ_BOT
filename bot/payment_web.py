@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from .database import Database
+from .miniapp import register_miniapp_routes
 
 
 def page(title: str, body: str, status: int = 200) -> web.Response:
@@ -143,6 +144,7 @@ async def start_payment_web(bot: Bot, db: Database, admin_id: int):
     app.router.add_get("/", payment_page)
     app.router.add_get("/health", health_check)
     app.router.add_post("/receipt", receipt_upload)
+    register_miniapp_routes(app)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", int(__import__("os").environ.get("PORT", "8080")))
