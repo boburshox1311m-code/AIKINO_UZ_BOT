@@ -187,14 +187,14 @@ MINI_APP_HTML = r"""<!doctype html>
 :root{--bg:#050505;--panel:#101010;--panel2:#17120b;--gold:#f5c451;--gold2:#9b6817;--red:#d9232e;--text:#fff;--muted:#9d9d9d;--line:#2b2418}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 85% -10%,#6d421c55,transparent 34%),radial-gradient(circle at -10% 40%,#8a11172b,transparent 32%)}
-.app{min-height:100vh;padding:env(safe-area-inset-top) 0 calc(82px + env(safe-area-inset-bottom))}
-.top{position:sticky;top:0;z-index:20;background:#050505e8;backdrop-filter:blur(18px);padding:14px 16px 10px;border-bottom:1px solid #171717}
-.brand{display:flex;align-items:center;justify-content:space-between}.brandmark{display:flex;align-items:center;gap:10px}.crown{width:38px;height:38px;border-radius:14px;background:linear-gradient(145deg,#ffe88c,#aa6914);display:grid;place-items:center;color:#130c02;font-size:22px;box-shadow:0 0 28px #e7a92735}
-.logo{font-weight:900;letter-spacing:1px;color:#f8d16e;font-size:20px}.sub{font-size:11px;color:#a48b58;letter-spacing:1.5px}.avatar{width:36px;height:36px;border-radius:50%;border:1px solid #6e521e;background:#17130c;display:grid;place-items:center;font-weight:800;color:#f3cb67}
-.hero{margin:14px 16px 8px;border-radius:24px;min-height:220px;padding:22px;display:flex;align-items:flex-end;position:relative;overflow:hidden;background:linear-gradient(135deg,#2a1909,#0b0b0b 55%,#351011);border:1px solid #46351d}
+.app{min-height:var(--tg-viewport-stable-height,100vh);padding:calc(env(safe-area-inset-top) + 4px) 0 calc(88px + env(safe-area-inset-bottom))}
+.top{position:sticky;top:0;z-index:20;background:#050505ee;backdrop-filter:blur(20px);padding:10px 14px 10px;border-bottom:1px solid #1d1a14}
+.brand{display:flex;align-items:center;justify-content:space-between;gap:10px}.brandmark{display:flex;align-items:center;gap:10px}.brandActions{display:flex;align-items:center;gap:8px}.crown{width:40px;height:40px;border-radius:14px;background:linear-gradient(145deg,#ffe88c,#aa6914);display:grid;place-items:center;color:#130c02;font-size:22px;box-shadow:0 0 28px #e7a92735}
+.logo{font-weight:950;letter-spacing:1.1px;color:#f8d16e;font-size:20px}.sub{font-size:10px;color:#a48b58;letter-spacing:1.7px}.avatar{width:38px;height:38px;border-radius:50%;border:1px solid #6e521e;background:#17130c;display:grid;place-items:center;font-weight:800;color:#f3cb67}.closeBtn{width:38px;height:38px;border-radius:12px;border:1px solid #2a241b;background:#111;color:#ddd;font-size:20px;display:grid;place-items:center}
+.hero{margin:14px 16px 8px;border-radius:26px;min-height:260px;padding:24px;display:flex;align-items:flex-end;position:relative;overflow:hidden;background:linear-gradient(135deg,#2a1909,#0b0b0b 55%,#351011);border:1px solid #4f3a1b;box-shadow:0 18px 60px #0008}
 .hero:after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,#050505dd,transparent 70%)}
 .heroContent{position:relative;z-index:2}.eyebrow{color:#f0bc48;font-weight:800;font-size:12px;letter-spacing:1.7px}.hero h1{margin:7px 0 8px;font-size:29px;line-height:1.02}.hero p{margin:0;color:#c6c6c6;max-width:330px;line-height:1.4;font-size:14px}
-.heroBtn{margin-top:14px;border:0;border-radius:12px;padding:12px 17px;background:linear-gradient(135deg,#ffd96f,#b97618);font-weight:900;color:#1a1003}
+.heroBtn{margin-top:16px;border:0;border-radius:14px;padding:14px 19px;background:linear-gradient(135deg,#ffe07a,#b97618);font-weight:950;color:#1a1003;font-size:14px;box-shadow:0 10px 28px #b9761838}
 .section{padding:12px 16px 2px}.sectionHead{display:flex;justify-content:space-between;align-items:center;margin:0 0 10px}.section h2{font-size:19px;margin:0}.sectionHead span{font-size:12px;color:#c49842}
 .row{display:flex;gap:11px;overflow:auto;padding-bottom:6px;scrollbar-width:none}.row::-webkit-scrollbar{display:none}
 .card{width:132px;min-width:132px}.poster{width:132px;height:185px;border-radius:16px;overflow:hidden;background:linear-gradient(145deg,#25190b,#151515);border:1px solid #2d261b;position:relative}
@@ -202,8 +202,8 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:rad
 .badge{position:absolute;top:7px;left:7px;border-radius:8px;padding:4px 7px;font-size:10px;font-weight:900;background:#d7212d;color:white}.vip{left:auto;right:7px;background:#e8b73b;color:#171006}
 .title{font-weight:750;font-size:13px;margin-top:7px;line-height:1.22;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meta{font-size:11px;color:#8f8f8f;margin-top:3px}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.tile{background:#101010;border:1px solid #24201a;border-radius:16px;padding:14px 10px;text-align:center;font-size:12px;font-weight:700}.tile b{display:block;font-size:22px;margin-bottom:6px}
-.bottom{position:fixed;bottom:0;left:0;right:0;z-index:30;background:#080808ed;backdrop-filter:blur(18px);border-top:1px solid #1c1c1c;padding:8px 8px calc(8px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,1fr)}
-.nav{border:0;background:transparent;color:#8e8e8e;font-size:10px;padding:5px 2px}.nav b{display:block;font-size:21px;margin-bottom:2px}.nav.active{color:#f2c351}
+.bottom{position:fixed;bottom:0;left:0;right:0;z-index:30;background:#080808f2;backdrop-filter:blur(20px);border-top:1px solid #211d17;padding:8px 8px calc(10px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,1fr)}
+.nav{border:0;background:transparent;color:#888;font-size:10px;padding:6px 2px;font-weight:700}.nav b{display:block;font-size:22px;margin-bottom:3px}.nav.active{color:#f2c351}
 .view{display:none}.view.active{display:block}.pageTop{padding:18px 16px 8px;display:flex;align-items:center;gap:12px}.back{border:0;background:#171717;color:#fff;width:38px;height:38px;border-radius:12px;font-size:20px}.pageTitle{font-weight:900;font-size:22px}
 .catalog{display:grid;grid-template-columns:repeat(2,1fr);gap:13px;padding:10px 16px 22px}.catalog .card{width:auto;min-width:0}.catalog .poster{width:100%;height:235px}
 .search{margin:8px 16px 4px;display:flex;gap:8px}.search input{flex:1;padding:13px 14px;border-radius:14px;background:#111;border:1px solid #2c2c2c;color:white;font-size:15px}
@@ -215,11 +215,11 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:rad
 <body>
 <div class="app">
   <header class="top">
-    <div class="brand"><div class="brandmark"><div class="crown">♛</div><div><div class="logo">AIKINOUZ</div><div class="sub">MOVIE STUDIO</div></div></div><div class="avatar" id="avatar">A</div></div>
+    <div class="brand"><div class="brandmark"><div class="crown">♛</div><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div><div class="brandActions"><div class="avatar" id="avatar">A</div><button class="closeBtn" onclick="closeApp()" aria-label="Yopish">×</button></div></div>
   </header>
 
   <main id="home" class="view active">
-    <section class="hero"><div class="heroContent"><div class="eyebrow">AIKINOUZ PREMIERE</div><h1>Kino dunyosi yangi darajada</h1><p>Trenddagi seriallar, yangi qismlar va maxsus VIP kolleksiya — barchasi bir joyda.</p><button class="heroBtn" onclick="showView('catalog')">▶ Katalogni ochish</button></div></section>
+    <section class="hero"><div class="heroContent"><div class="eyebrow">AIKINOUZ PREMIERE</div><h1>Premium kino olamiga xush kelibsiz</h1><p>Trenddagi seriallar, yangi qismlar va maxsus VIP kolleksiya — to‘liq ekran rejimida bir joyda.</p><button class="heroBtn" onclick="showView('catalog')">🎬 TOMOSHANI BOSHLASH</button></div></section>
     <section class="section"><div class="sectionHead"><h2>🔥 Trendda</h2><span>1000+ ko‘rish</span></div><div id="trendRow" class="row"></div></section>
     <section class="section"><div class="sectionHead"><h2>🆕 Yangi kinolar</h2><span onclick="showView('catalog')">Barchasi ›</span></div><div id="newRow" class="row"></div></section>
     <section class="section"><div class="sectionHead"><h2>Tez kirish</h2></div><div class="grid">
@@ -250,15 +250,40 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:rad
 
   <nav class="bottom">
     <button class="nav active" data-view="home" onclick="showView('home')"><b>⌂</b>Bosh sahifa</button>
-    <button class="nav" data-view="catalog" onclick="showView('catalog')"><b>▦</b>Kinolar</button>
+    <button class="nav" data-view="catalog" onclick="showView('catalog')"><b>▦</b>Katalog</button>
     <button class="nav" data-view="vip" onclick="showView('vip')"><b>♛</b>VIP</button>
     <button class="nav" data-view="catalog" onclick="showView('catalog');document.getElementById('searchInput').focus()"><b>⌕</b>Qidiruv</button>
-    <button class="nav" data-view="profile" onclick="showView('profile')"><b>●</b>Profil</button>
+    <button class="nav" data-view="profile" onclick="showView('profile')"><b>●</b>Profilim</button>
   </nav>
 </div>
 <script>
-const tg=window.Telegram?.WebApp; if(tg){tg.ready();tg.expand();tg.setHeaderColor('#050505');tg.setBackgroundColor('#050505')}
+const tg=window.Telegram?.WebApp;
+if(tg){
+  tg.ready();
+  tg.expand();
+  try{tg.setHeaderColor('#050505')}catch(e){}
+  try{tg.setBackgroundColor('#050505')}catch(e){}
+  try{tg.setBottomBarColor('#080808')}catch(e){}
+  try{
+    if(typeof tg.requestFullscreen==='function') tg.requestFullscreen();
+  }catch(e){
+    tg.expand();
+  }
+}
+function closeApp(){
+  if(tg?.close) tg.close();
+  else history.back();
+}
 const initData=tg?.initData||''; let movies=[]; let me={authenticated:false,favorite_ids:[]};
+function syncViewport(){
+  const h=tg?.viewportStableHeight||tg?.viewportHeight||window.innerHeight;
+  document.documentElement.style.setProperty('--app-height',h+'px');
+}
+syncViewport();
+if(tg?.onEvent){
+  tg.onEvent('viewportChanged',syncViewport);
+  tg.onEvent('fullscreenChanged',syncViewport);
+}
 const api=(url,opt={})=>fetch(url,{...opt,headers:{...(opt.headers||{}),'X-Telegram-Init-Data':initData}}).then(r=>r.json());
 
 function badgeHTML(m){let out='';if(m.badge)out+=`<span class="badge">${m.badge}</span>`;if(m.is_vip)out+=`<span class="badge vip">VIP</span>`;return out}
