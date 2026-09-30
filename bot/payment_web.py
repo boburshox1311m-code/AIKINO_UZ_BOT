@@ -11,6 +11,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 
 from .database import Database
 from .miniapp import register_miniapp_routes
+from .storage import R2Storage
 
 
 def page(title: str, body: str, status: int = 200) -> web.Response:
@@ -136,11 +137,12 @@ async def receipt_upload(request: web.Request) -> web.Response:
     return page("Chek yuborildi", "<h1>✅ Chek yuborildi</h1><p class='muted'>Admin to‘lovni tekshiradi. Natija bot orqali sizga yuboriladi.</p>")
 
 
-async def start_payment_web(bot: Bot, db: Database, admin_id: int):
+async def start_payment_web(bot: Bot, db: Database, admin_id: int, storage: R2Storage):
     app = web.Application(client_max_size=8 * 1024 * 1024)
     app["bot"] = bot
     app["db"] = db
     app["admin_id"] = admin_id
+    app["storage"] = storage
     app.router.add_get("/", payment_page)
     app.router.add_get("/health", health_check)
     app.router.add_post("/receipt", receipt_upload)
