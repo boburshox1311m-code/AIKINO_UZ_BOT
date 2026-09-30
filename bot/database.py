@@ -419,6 +419,14 @@ class Database:
                 updated_at=NOW()
         """, user_id, episode_id)
 
+    async def record_episode_view(self, user_id: int, episode_id: int):
+        assert self.pool
+        return await self.pool.execute(
+            "INSERT INTO episode_views(user_id, episode_id) VALUES($1,$2)",
+            user_id,
+            episode_id,
+        )
+
     async def watch_progress(self, user_id: int):
         assert self.pool
         return await self.pool.fetchrow("""
