@@ -138,6 +138,34 @@ async def api_toggle_favorite(request: web.Request) -> web.Response:
     return web.json_response({"favorite": added})
 
 
+async def api_support(request: web.Request) -> web.Response:
+    user = _request_user(request)
+    if not user:
+        raise web.HTTPUnauthorized()
+    bot: Bot = request.app["bot"]
+    admin_id: int = request.app["admin_id"]
+    try:
+        data = await request.json()
+    except Exception:
+        raise web.HTTPBadRequest()
+    message = str(data.get("message", "")).strip()
+    if len(message) < 3:
+        return web.json_response({"error": "message_too_short"}, status=400)
+    if len(message) > 2000:
+        return web.json_response({"error": "message_too_long"}, status=400)
+    full_name = " ".join(x for x in [user.get("first_name", ""), user.get("last_name", "")] if x).strip()
+    username = f"@{user.get('username')}" if user.get("username") else "username yo‘q"
+    text = (
+        "🛟 <b>AIKINOUZ SUPPORT</b>\n\n"
+        f"👤 <b>{full_name or 'Foydalanuvchi'}</b>\n"
+        f"🔗 {username}\n"
+        f"🆔 <code>{user.get('id')}</code>\n\n"
+        f"💬 <b>Xabar:</b>\n{message}"
+    )
+    await bot.send_message(admin_id, text)
+    return web.json_response({"ok": True})
+
+
 async def poster(request: web.Request) -> web.Response:
     db: Database = request.app["db"]
     bot: Bot = request.app["bot"]
@@ -172,6 +200,7 @@ def register_miniapp_routes(app: web.Application) -> None:
     app.router.add_get("/app/api/movie/{movie_id}", api_movie)
     app.router.add_get("/app/api/me", api_me)
     app.router.add_post("/app/api/favorite/{movie_id}", api_toggle_favorite)
+    app.router.add_post("/app/api/support", api_support)
     app.router.add_get("/app/poster/{movie_id}", poster)
 
 
@@ -210,6 +239,8 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:rad
 .detailHero{margin:0 16px;border-radius:22px;overflow:hidden;background:#111;border:1px solid #282018}.detailHero img{width:100%;height:430px;object-fit:cover;display:block}.detailBody{padding:16px}.detailBody h1{font-size:28px;margin:0 0 8px}.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 14px}.chip{font-size:11px;border:1px solid #4b3b1f;background:#17130d;color:#e4be64;border-radius:999px;padding:6px 9px}.desc{color:#c2c2c2;line-height:1.55;font-size:14px}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:15px 0}.goldBtn,.darkBtn{border:0;border-radius:13px;padding:13px;font-weight:850}.goldBtn{background:linear-gradient(135deg,#ffd96f,#b97618);color:#1a1003}.darkBtn{background:#171717;color:#fff;border:1px solid #2b2b2b}
 .episodes{display:grid;gap:8px}.episode{display:flex;justify-content:space-between;align-items:center;background:#111;border:1px solid #242424;border-radius:14px;padding:13px}.episode button{border:0;border-radius:10px;background:#2b2111;color:#f2c75d;padding:8px 11px;font-weight:800}
 .profile{padding:18px 16px}.profileCard{border:1px solid #332819;background:linear-gradient(145deg,#15110b,#0d0d0d);border-radius:20px;padding:18px}.profileName{font-size:20px;font-weight:900}.status{color:#f0bd4d;font-size:12px;margin-top:5px}.empty{padding:28px 16px;text-align:center;color:#888}
+.supportBtn{width:100%;margin-top:20px;border:1px solid #5e451d;background:linear-gradient(135deg,#17120b,#0c0c0c);color:#f3c95f;border-radius:16px;padding:15px 16px;font-weight:900;font-size:15px;text-align:left}
+.supportCard{margin:10px 16px 16px;border:1px solid #59421c;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px;box-shadow:0 18px 50px #0007}.supportTitle{font-size:24px;font-weight:950;color:#f4ca62}.supportMeta{margin-top:14px;display:grid;gap:9px;color:#d1d1d1;font-size:13px;line-height:1.45}.supportMeta b{color:#f1c45c}.supportForm{margin-top:18px}.supportForm textarea{width:100%;min-height:130px;resize:vertical;border-radius:15px;border:1px solid #383027;background:#0d0d0d;color:#fff;padding:14px;font:inherit}.supportSend{width:100%;margin-top:10px;border:0;border-radius:14px;padding:14px;background:linear-gradient(135deg,#ffe07a,#b97618);color:#1a1003;font-weight:950}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px;line-height:1.4}
 </style>
 </head>
 <body>
@@ -245,7 +276,34 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:rad
 
   <main id="profile" class="view">
     <div class="pageTop"><button class="back" onclick="showView('home')">‹</button><div class="pageTitle">Profilim</div></div>
-    <div class="profile"><div id="profileCard" class="profileCard"></div><div class="sectionHead" style="margin-top:22px"><h2>❤️ Sevimlilar</h2></div><div id="favoritesGrid" class="catalog" style="padding:0"></div></div>
+    <div class="profile">
+      <div id="profileCard" class="profileCard"></div>
+      <div class="sectionHead" style="margin-top:22px"><h2>❤️ Sevimlilar</h2></div>
+      <div id="favoritesGrid" class="catalog" style="padding:0"></div>
+      <button class="supportBtn" onclick="showView('support')">🛟 AIKINOUZ SUPPORT <span style="float:right">›</span></button>
+    </div>
+  </main>
+
+  <main id="support" class="view">
+    <div class="pageTop"><button class="back" onclick="showView('profile')">‹</button><div class="pageTitle">AIKINOUZ Support</div></div>
+    <section class="supportCard">
+      <div class="supportTitle">👑 AIKINOUZ</div>
+      <div class="sub" style="margin-top:3px">PREMIUM KINO PLATFORMASI</div>
+      <div class="supportMeta">
+        <div>🏢 <b>Kompaniya:</b> AIKINOUZ</div>
+        <div>👑 <b>Kompaniya prezidenti:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI</div>
+        <div>📧 <b>Email:</b> boburshox1311m@gmail.com</div>
+        <div>🧩 <b>Project:</b> AIKINOUZ / AIKINO_UZ_BOT</div>
+        <div>© 2026 AIKINOUZ. All rights reserved.</div>
+        <div><b>Project owner / author:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI</div>
+      </div>
+      <div class="supportForm">
+        <h3>💬 Adminga yozish</h3>
+        <textarea id="supportMessage" maxlength="2000" placeholder="Savol, muammo yoki taklifingizni yozing..."></textarea>
+        <button id="supportSendBtn" class="supportSend" onclick="sendSupport()">📨 XABARNI YUBORISH</button>
+        <div id="supportStatus" class="supportNote">Xabaringiz AIKINOUZ adminiga to‘g‘ridan-to‘g‘ri yuboriladi.</div>
+      </div>
+    </section>
   </main>
 
   <nav class="bottom">
@@ -298,6 +356,29 @@ function openEpisode(id){if(!id)return;const url='https://t.me/AIKINO_UZ_BOT?sta
 function openFirstEpisode(movieId,id){if(id)openEpisode(id)}
 async function toggleFavorite(id){if(!initData){alert('Sevimlilar Telegram ichida ishlaydi.');return}const r=await api('/app/api/favorite/'+id,{method:'POST'});if(r.error==='vip_required'){alert('Bu kino uchun VIP kerak.');return}if(r.favorite&&!me.favorite_ids.includes(id))me.favorite_ids.push(id);if(!r.favorite)me.favorite_ids=me.favorite_ids.filter(x=>x!==id);openMovie(id)}
 async function renderProfile(){if(!me.authenticated){document.getElementById('profileCard').innerHTML='<div class="profileName">Telegram ichida oching</div><div class="status">Profil va sevimlilar uchun Mini App bot ichidan ochilishi kerak.</div>';document.getElementById('favoritesGrid').innerHTML='';return}const u=me.user;document.getElementById('profileCard').innerHTML=`<div class="profileName">${escapeHtml((u.first_name||'')+' '+(u.last_name||''))}</div><div class="status">${me.vip?'💎 VIP ACTIVE':'✨ STANDARD'}${me.continue?` · ▶ ${escapeHtml(me.continue.movie_title)} ${me.continue.episode_number}-qism`:''}</div>`;document.getElementById('favoritesGrid').innerHTML=movies.filter(m=>me.favorite_ids.includes(m.id)).map(cardHTML).join('')||'<div class="empty">Hozircha sevimli kinolar yo‘q.</div>'}
+async function sendSupport(){
+  const box=document.getElementById('supportMessage');
+  const btn=document.getElementById('supportSendBtn');
+  const status=document.getElementById('supportStatus');
+  const message=(box?.value||'').trim();
+  if(!initData){status.textContent='Support Telegram ichida ochilganda ishlaydi.';return}
+  if(message.length<3){status.textContent='Xabarni biroz to‘liqroq yozing.';return}
+  btn.disabled=true;btn.textContent='⏳ YUBORILMOQDA...';status.textContent='Xabar yuborilmoqda...';
+  try{
+    const r=await api('/app/api/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});
+    if(r.ok){
+      box.value='';
+      status.textContent='✅ Xabaringiz adminga yuborildi.';
+      if(tg?.HapticFeedback) try{tg.HapticFeedback.notificationOccurred('success')}catch(e){}
+    }else{
+      status.textContent='Xabar yuborilmadi. Qayta urinib ko‘ring.';
+    }
+  }catch(e){
+    status.textContent='Xabar yuborilmadi. Internetni tekshirib qayta urinib ko‘ring.';
+  }finally{
+    btn.disabled=false;btn.textContent='📨 XABARNI YUBORISH';
+  }
+}
 async function boot(){const [catalog,user]=await Promise.all([api('/app/api/catalog'),api('/app/api/me')]);movies=catalog.movies||[];me=user||{authenticated:false,favorite_ids:[]};if(me.authenticated)document.getElementById('avatar').textContent=(me.user.first_name||'A')[0].toUpperCase();renderHome();renderCatalog()}
 boot().catch(()=>{document.getElementById('catalogGrid').innerHTML='<div class="empty">Ma’lumot yuklanmadi. Qayta ochib ko‘ring.</div>'})
 </script>
