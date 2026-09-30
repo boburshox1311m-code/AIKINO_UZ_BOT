@@ -213,173 +213,373 @@ MINI_APP_HTML = r"""<!doctype html>
 <title>AIKINOUZ</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-:root{--bg:#050505;--panel:#101010;--panel2:#17120b;--gold:#f5c451;--gold2:#9b6817;--red:#d9232e;--text:#fff;--muted:#9d9d9d;--line:#2b2418}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-body:before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 85% -10%,#6d421c55,transparent 34%),radial-gradient(circle at -10% 40%,#8a11172b,transparent 32%)}
-.app{min-height:var(--tg-viewport-stable-height,100vh);padding:calc(env(safe-area-inset-top) + 4px) 0 calc(88px + env(safe-area-inset-bottom))}
-.top{position:sticky;top:0;z-index:20;background:#050505ee;backdrop-filter:blur(20px);padding:10px 14px 10px;border-bottom:1px solid #1d1a14}
-.brand{display:flex;align-items:center;justify-content:space-between;gap:10px}.brandmark{display:flex;align-items:center;gap:10px}.brandActions{display:flex;align-items:center;gap:8px}.crown{width:40px;height:40px;border-radius:14px;background:linear-gradient(145deg,#ffe88c,#aa6914);display:grid;place-items:center;color:#130c02;font-size:22px;box-shadow:0 0 28px #e7a92735}
-.logo{font-weight:950;letter-spacing:1.1px;color:#f8d16e;font-size:20px}.sub{font-size:10px;color:#a48b58;letter-spacing:1.7px}.avatar{width:38px;height:38px;border-radius:50%;border:1px solid #6e521e;background:#17130c;display:grid;place-items:center;font-weight:800;color:#f3cb67}.closeBtn{width:38px;height:38px;border-radius:12px;border:1px solid #2a241b;background:#111;color:#ddd;font-size:20px;display:grid;place-items:center}
-.hero{margin:14px 16px 8px;border-radius:26px;min-height:260px;padding:24px;display:flex;align-items:flex-end;position:relative;overflow:hidden;background:linear-gradient(135deg,#2a1909,#0b0b0b 55%,#351011);border:1px solid #4f3a1b;box-shadow:0 18px 60px #0008}
-.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,#050505dd,transparent 70%)}
-.heroContent{position:relative;z-index:2}.eyebrow{color:#f0bc48;font-weight:800;font-size:12px;letter-spacing:1.7px}.hero h1{margin:7px 0 8px;font-size:29px;line-height:1.02}.hero p{margin:0;color:#c6c6c6;max-width:330px;line-height:1.4;font-size:14px}
-.heroBtn{margin-top:16px;border:0;border-radius:14px;padding:14px 19px;background:linear-gradient(135deg,#ffe07a,#b97618);font-weight:950;color:#1a1003;font-size:14px;box-shadow:0 10px 28px #b9761838}
-.section{padding:12px 16px 2px}.sectionHead{display:flex;justify-content:space-between;align-items:center;margin:0 0 10px}.section h2{font-size:19px;margin:0}.sectionHead span{font-size:12px;color:#c49842}
-.row{display:flex;gap:11px;overflow:auto;padding-bottom:6px;scrollbar-width:none}.row::-webkit-scrollbar{display:none}
-.card{width:132px;min-width:132px}.poster{width:132px;height:185px;border-radius:16px;overflow:hidden;background:linear-gradient(145deg,#25190b,#151515);border:1px solid #2d261b;position:relative}
-.poster img{width:100%;height:100%;object-fit:cover;display:block}.posterFallback{height:100%;display:grid;place-items:center;color:#d9ad52;font-size:34px}
-.badge{position:absolute;top:7px;left:7px;border-radius:8px;padding:4px 7px;font-size:10px;font-weight:900;background:#d7212d;color:white}.vip{left:auto;right:7px;background:#e8b73b;color:#171006}
-.title{font-weight:750;font-size:13px;margin-top:7px;line-height:1.22;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meta{font-size:11px;color:#8f8f8f;margin-top:3px}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.tile{background:#101010;border:1px solid #24201a;border-radius:16px;padding:14px 10px;text-align:center;font-size:12px;font-weight:700}.tile b{display:block;font-size:22px;margin-bottom:6px}
-.bottom{position:fixed;bottom:0;left:0;right:0;z-index:30;background:#080808f2;backdrop-filter:blur(20px);border-top:1px solid #211d17;padding:8px 8px calc(10px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,1fr)}
-.nav{border:0;background:transparent;color:#888;font-size:10px;padding:6px 2px;font-weight:700}.nav b{display:block;font-size:22px;margin-bottom:3px}.nav.active{color:#f2c351}
-.view{display:none}.view.active{display:block}.pageTop{padding:18px 16px 8px;display:flex;align-items:center;gap:12px}.back{border:0;background:#171717;color:#fff;width:38px;height:38px;border-radius:12px;font-size:20px}.pageTitle{font-weight:900;font-size:22px}
-.catalog{display:grid;grid-template-columns:repeat(2,1fr);gap:13px;padding:10px 16px 22px}.catalog .card{width:auto;min-width:0}.catalog .poster{width:100%;height:235px}
-.search{margin:8px 16px 4px;display:flex;gap:8px}.search input{flex:1;padding:13px 14px;border-radius:14px;background:#111;border:1px solid #2c2c2c;color:white;font-size:15px}
-.detailHero{margin:0 16px;border-radius:22px;overflow:hidden;background:#111;border:1px solid #282018}.detailHero img{width:100%;height:430px;object-fit:cover;display:block}.detailBody{padding:16px}.detailBody h1{font-size:28px;margin:0 0 8px}.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 14px}.chip{font-size:11px;border:1px solid #4b3b1f;background:#17130d;color:#e4be64;border-radius:999px;padding:6px 9px}.desc{color:#c2c2c2;line-height:1.55;font-size:14px}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:15px 0}.goldBtn,.darkBtn{border:0;border-radius:13px;padding:13px;font-weight:850}.goldBtn{background:linear-gradient(135deg,#ffd96f,#b97618);color:#1a1003}.darkBtn{background:#171717;color:#fff;border:1px solid #2b2b2b}
-.episodes{display:grid;gap:8px}.episode{display:flex;justify-content:space-between;align-items:center;background:#111;border:1px solid #242424;border-radius:14px;padding:13px}.episode button{border:0;border-radius:10px;background:#2b2111;color:#f2c75d;padding:8px 11px;font-weight:800}
-.profile{padding:18px 16px}.profileCard{border:1px solid #332819;background:linear-gradient(145deg,#15110b,#0d0d0d);border-radius:20px;padding:18px}.profileName{font-size:20px;font-weight:900}.status{color:#f0bd4d;font-size:12px;margin-top:5px}.empty{padding:28px 16px;text-align:center;color:#888}
-.supportBtn{width:100%;margin-top:20px;border:1px solid #5e451d;background:linear-gradient(135deg,#17120b,#0c0c0c);color:#f3c95f;border-radius:16px;padding:15px 16px;font-weight:900;font-size:15px;text-align:left}
-.supportCard{margin:10px 16px 16px;border:1px solid #59421c;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px;box-shadow:0 18px 50px #0007}.supportTitle{font-size:24px;font-weight:950;color:#f4ca62}.supportMeta{margin-top:14px;display:grid;gap:9px;color:#d1d1d1;font-size:13px;line-height:1.45}.supportMeta b{color:#f1c45c}.supportForm{margin-top:18px}.supportForm textarea{width:100%;min-height:130px;resize:vertical;border-radius:15px;border:1px solid #383027;background:#0d0d0d;color:#fff;padding:14px;font:inherit}.supportSend{width:100%;margin-top:10px;border:0;border-radius:14px;padding:14px;background:linear-gradient(135deg,#ffe07a,#b97618);color:#1a1003;font-weight:950}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px;line-height:1.4}
+:root{--bg:#050505;--panel:#0d0d0d;--panel2:#121212;--gold:#f4c75c;--gold2:#b77a1d;--red:#d92631;--text:#fff;--muted:#989898;--line:#272117}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{min-height:100vh;background:
+radial-gradient(circle at 100% 0,#6c421b2e,transparent 30%),
+radial-gradient(circle at 0 40%,#5f0d1422,transparent 30%),
+#050505}
+button,input,textarea{font:inherit}
+button{cursor:pointer}
+.app{min-height:100vh;padding-top:calc(max(env(safe-area-inset-top),var(--tg-content-safe-area-inset-top,0px)) + 42px);padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+.top{position:sticky;top:0;z-index:30;background:#050505f3;backdrop-filter:blur(22px);border-bottom:1px solid #1f1a13;padding:10px 14px}
+.brand{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brandmark{display:flex;align-items:center;gap:10px}
+.crown{width:42px;height:42px;border-radius:14px;background:linear-gradient(145deg,#ffe58a,#a96913);display:grid;place-items:center;color:#1b1102;font-size:23px;box-shadow:0 0 28px #d99d2d33}
+.logo{font-weight:950;letter-spacing:1.1px;color:#f6ca63;font-size:20px}
+.sub{font-size:10px;color:#a88b54;letter-spacing:1.8px}
+.headRight{display:flex;align-items:center;gap:8px}
+.avatar,.closeBtn{width:38px;height:38px;border-radius:12px;border:1px solid #3a2d18;background:#101010;color:#f4c75c;display:grid;place-items:center;font-weight:900}
+.closeBtn{color:#ddd;font-size:21px}
+
+.hero{margin:14px 14px 10px;border:1px solid #57401c;border-radius:24px;min-height:305px;position:relative;overflow:hidden;background:#111 center/cover no-repeat;box-shadow:0 20px 60px #0009}
+.heroShade{position:absolute;inset:0;background:linear-gradient(0deg,#050505f7 0%,#0505058c 48%,#05050522 78%)}
+.heroContent{position:absolute;left:20px;right:20px;bottom:20px;z-index:2}
+.eyebrow{font-size:11px;letter-spacing:1.8px;font-weight:900;color:#f2c355}
+.hero h1{font-size:28px;line-height:1.02;margin:7px 0 7px;max-width:90%}
+.heroMeta{font-size:12px;color:#d0d0d0;margin-bottom:9px}
+.heroDesc{font-size:13px;color:#bebebe;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.heroActions{display:flex;gap:8px;margin-top:14px}
+.goldBtn,.darkBtn{border-radius:13px;padding:12px 15px;font-weight:900;border:0}
+.goldBtn{background:linear-gradient(135deg,#ffe17b,#bd7a1b);color:#171003}
+.darkBtn{background:#111c;color:#fff;border:1px solid #373024}
+
+.section{padding:12px 14px 4px}
+.sectionHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.sectionHead h2{font-size:19px;margin:0}.sectionHead button{border:0;background:none;color:#c99a3f;font-size:12px}
+.row{display:flex;gap:11px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}.row::-webkit-scrollbar{display:none}
+.card{width:144px;min-width:144px}
+.poster{height:205px;border-radius:16px;overflow:hidden;background:#151515;position:relative;border:1px solid #2a241a;box-shadow:0 9px 24px #0008}
+.poster img{width:100%;height:100%;object-fit:cover;display:block}
+.posterFallback{height:100%;display:grid;place-items:center;font-size:36px;color:#dcb451;background:linear-gradient(145deg,#1f170c,#111)}
+.badge{position:absolute;top:7px;left:7px;border-radius:8px;padding:5px 7px;font-size:9px;font-weight:950;background:var(--red);color:#fff}
+.badge.vip{left:auto;right:7px;background:#e8b83e;color:#181003}
+.cardTitle{font-size:13px;font-weight:850;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cardMeta{font-size:11px;color:#909090;margin-top:3px}
+
+.page{display:none}.page.active{display:block}
+.pageTop{display:flex;align-items:center;gap:10px;padding:14px 14px 8px}
+.backBtn{width:38px;height:38px;border-radius:12px;border:1px solid #2d271d;background:#101010;color:#fff;font-size:23px}
+.pageTitle{font-size:22px;font-weight:950}
+.filterBar{display:flex;gap:8px;overflow-x:auto;padding:6px 14px 10px;scrollbar-width:none}.filterBar::-webkit-scrollbar{display:none}
+.filterBtn{white-space:nowrap;border-radius:999px;padding:8px 12px;border:1px solid #3a3020;background:#0e0e0e;color:#aaa;font-size:12px;font-weight:800}
+.filterBtn.active{background:linear-gradient(135deg,#f7d36b,#b77518);color:#171003;border-color:transparent}
+.searchBox{margin:4px 14px 8px}.searchBox input{width:100%;padding:13px 14px;border-radius:14px;border:1px solid #2b2b2b;background:#0f0f0f;color:#fff}
+.catalog{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:8px 14px 24px}
+.catalog .card{width:auto;min-width:0}.catalog .poster{height:246px}
+.catalog .cardTitle{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.2;min-height:31px}
+
+.detailPoster{margin:4px 14px 0;height:440px;border-radius:22px;overflow:hidden;border:1px solid #372d1c;background:#111}
+.detailPoster img{width:100%;height:100%;object-fit:cover}
+.detailBody{padding:16px 14px 24px}.detailBody h1{font-size:28px;line-height:1.05;margin:0 0 8px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 14px}.chip{border:1px solid #4c3b1e;background:#15110b;color:#e7c164;border-radius:999px;padding:6px 9px;font-size:11px}
+.desc{color:#c2c2c2;font-size:14px;line-height:1.55}.detailActions{display:grid;grid-template-columns:1.35fr .65fr;gap:8px;margin:16px 0}
+.tabs{display:flex;gap:16px;border-bottom:1px solid #222;margin-top:8px}.tab{padding:10px 0;border:0;background:none;color:#8d8d8d;font-weight:800}.tab.active{color:#f3c85f;border-bottom:2px solid #f3c85f}
+.episodes{display:grid;gap:8px;margin-top:12px}.episode{display:flex;align-items:center;justify-content:space-between;padding:13px;background:#0f0f0f;border:1px solid #242424;border-radius:14px}.episode button{border:1px solid #4d3a1d;background:#1a140b;color:#f2c45b;border-radius:10px;padding:8px 10px;font-weight:850}
+
+.vipHero{margin:8px 14px 14px;border:1px solid #6b4e20;border-radius:24px;padding:24px;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0d0d0d;text-align:center}
+.vipHero .big{font-size:48px}.vipHero h1{margin:8px 0 5px;color:#f6ca61}.benefits{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}.benefit{background:#111;border:1px solid #2e271d;border-radius:14px;padding:12px 7px;font-size:11px}.benefit b{display:block;font-size:22px;margin-bottom:5px}
+
+.profile{padding:10px 14px 24px}.profileCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0c0c0c);border-radius:20px;padding:18px}.profileName{font-size:21px;font-weight:950}.status{font-size:12px;color:#efc054;margin-top:5px}
+.profileMenu{margin-top:14px;display:grid;gap:8px}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}
+.supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
+.empty{padding:28px 14px;color:#888;text-align:center}
+
+.bottom{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;grid-template-columns:repeat(5,1fr);background:#070707f4;backdrop-filter:blur(20px);border-top:1px solid #201b13;padding:7px 6px calc(9px + env(safe-area-inset-bottom))}
+.navBtn{border:0;background:none;color:#858585;font-size:10px;font-weight:800;padding:5px 1px}.navBtn b{display:block;font-size:21px;margin-bottom:2px}.navBtn.active{color:#f4c75c}
+.hidden{display:none!important}
 </style>
 </head>
 <body>
 <div class="app">
-  <header class="top">
-    <div class="brand"><div class="brandmark"><div class="crown">♛</div><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div><div class="brandActions"><div class="avatar" id="avatar">A</div><button class="closeBtn" onclick="closeApp()" aria-label="Yopish">×</button></div></div>
-  </header>
+<header class="top">
+  <div class="brand">
+    <div class="brandmark"><div class="crown">♛</div><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div>
+    <div class="headRight"><div id="avatar" class="avatar">A</div><button id="closeApp" class="closeBtn">×</button></div>
+  </div>
+</header>
 
-  <main id="home" class="view active">
-    <section class="hero"><div class="heroContent"><div class="eyebrow">AIKINOUZ PREMIERE</div><h1>Premium kino olamiga xush kelibsiz</h1><p>Trenddagi seriallar, yangi qismlar va maxsus VIP kolleksiya — to‘liq ekran rejimida bir joyda.</p><button class="heroBtn" onclick="showView('catalog')">🎬 TOMOSHANI BOSHLASH</button></div></section>
-    <section class="section"><div class="sectionHead"><h2>🔥 Trendda</h2><span>1000+ ko‘rish</span></div><div id="trendRow" class="row"></div></section>
-    <section class="section"><div class="sectionHead"><h2>🆕 Yangi kinolar</h2><span onclick="showView('catalog')">Barchasi ›</span></div><div id="newRow" class="row"></div></section>
-    <section class="section"><div class="sectionHead"><h2>Tez kirish</h2></div><div class="grid">
-      <div class="tile" onclick="showView('catalog')"><b>🎬</b>Katalog</div>
-      <div class="tile" onclick="showView('vip')"><b>💎</b>VIP</div>
-      <div class="tile" onclick="showView('profile')"><b>❤️</b>Sevimlilar</div>
-    </div></section>
-  </main>
-
-  <main id="catalog" class="view">
-    <div class="pageTop"><button class="back" onclick="showView('home')">‹</button><div class="pageTitle">Kino katalogi</div></div>
-    <div class="search"><input id="searchInput" placeholder="Kino yoki serial qidirish..." oninput="renderCatalog()"></div>
-    <div id="catalogGrid" class="catalog"></div>
-  </main>
-
-  <main id="detail" class="view"><div class="pageTop"><button class="back" onclick="showView('catalog')">‹</button><div class="pageTitle">Kino</div></div><div id="detailContent"></div></main>
-
-  <main id="vip" class="view">
-    <div class="pageTop"><button class="back" onclick="showView('home')">‹</button><div class="pageTitle">AIKINOUZ VIP</div></div>
-    <section class="hero" style="min-height:190px"><div class="heroContent"><div class="eyebrow">💎 EXCLUSIVE</div><h1>VIP kolleksiya</h1><p>Maxsus kinolar, premium kontent va yangi qismlarga tez kirish.</p></div></section>
-    <div id="vipGrid" class="catalog"></div>
-  </main>
-
-  <main id="profile" class="view">
-    <div class="pageTop"><button class="back" onclick="showView('home')">‹</button><div class="pageTitle">Profilim</div></div>
-    <div class="profile">
-      <div id="profileCard" class="profileCard"></div>
-      <div class="sectionHead" style="margin-top:22px"><h2>❤️ Sevimlilar</h2></div>
-      <div id="favoritesGrid" class="catalog" style="padding:0"></div>
-      <button class="supportBtn" onclick="showView('support')">🛟 AIKINOUZ SUPPORT <span style="float:right">›</span></button>
+<main id="home" class="page active">
+  <section id="hero" class="hero">
+    <div class="heroShade"></div>
+    <div class="heroContent">
+      <div class="eyebrow">AIKINOUZ PREMIERE</div>
+      <h1 id="heroTitle">Premium kino olami</h1>
+      <div id="heroMeta" class="heroMeta">Yangi va mashhur kinolar bir joyda</div>
+      <div id="heroDesc" class="heroDesc">AIKINOUZ bilan sevimli seriallaringizni tomosha qiling.</div>
+      <div class="heroActions"><button id="heroWatch" class="goldBtn">▶ Tomosha qilish</button><button id="heroCatalog" class="darkBtn">Katalog</button></div>
     </div>
-  </main>
+  </section>
+  <section class="section"><div class="sectionHead"><h2>🔥 Trend kinolar</h2><button data-open="catalog" data-filter="trend">Barchasi ›</button></div><div id="trendRow" class="row"></div></section>
+  <section class="section"><div class="sectionHead"><h2>🆕 Yangi kinolar</h2><button data-open="catalog" data-filter="new">Barchasi ›</button></div><div id="newRow" class="row"></div></section>
+  <section class="section"><div class="sectionHead"><h2>💎 VIP tanlov</h2><button data-open="vip">Ko‘rish ›</button></div><div id="vipRow" class="row"></div></section>
+</main>
 
-  <main id="support" class="view">
-    <div class="pageTop"><button class="back" onclick="showView('profile')">‹</button><div class="pageTitle">AIKINOUZ Support</div></div>
-    <section class="supportCard">
-      <div class="supportTitle">👑 AIKINOUZ</div>
-      <div class="sub" style="margin-top:3px">PREMIUM KINO PLATFORMASI</div>
-      <div class="supportMeta">
-        <div>🏢 <b>Kompaniya:</b> AIKINOUZ</div>
-        <div>👑 <b>Kompaniya prezidenti:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI</div>
-        <div>📧 <b>Email:</b> boburshox1311m@gmail.com</div>
-        <div>🧩 <b>Project:</b> AIKINOUZ / AIKINO_UZ_BOT</div>
-        <div>© 2026 AIKINOUZ. All rights reserved.</div>
-        <div><b>Project owner / author:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI</div>
-      </div>
-      <div class="supportForm">
-        <h3>💬 Adminga yozish</h3>
-        <textarea id="supportMessage" maxlength="2000" placeholder="Savol, muammo yoki taklifingizni yozing..."></textarea>
-        <button id="supportSendBtn" class="supportSend" onclick="sendSupport()">📨 XABARNI YUBORISH</button>
-        <div id="supportStatus" class="supportNote">Xabaringiz AIKINOUZ adminiga to‘g‘ridan-to‘g‘ri yuboriladi.</div>
-      </div>
-    </section>
-  </main>
+<main id="catalog" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="home">‹</button><div class="pageTitle">Kinolar</div></div>
+  <div class="filterBar">
+    <button class="filterBtn active" data-filter="all">Barchasi</button>
+    <button class="filterBtn" data-filter="trend">🔥 Trend</button>
+    <button class="filterBtn" data-filter="new">🆕 Yangi</button>
+    <button class="filterBtn" data-filter="vip">💎 VIP</button>
+  </div>
+  <div class="searchBox"><input id="searchInput" placeholder="Kino yoki serial qidiring..."></div>
+  <div id="catalogGrid" class="catalog"></div>
+</main>
 
-  <nav class="bottom">
-    <button class="nav active" data-view="home" onclick="showView('home')"><b>⌂</b>Bosh sahifa</button>
-    <button class="nav" data-view="catalog" onclick="showView('catalog')"><b>▦</b>Katalog</button>
-    <button class="nav" data-view="vip" onclick="showView('vip')"><b>♛</b>VIP</button>
-    <button class="nav" data-view="catalog" onclick="showView('catalog');document.getElementById('searchInput').focus()"><b>⌕</b>Qidiruv</button>
-    <button class="nav" data-view="profile" onclick="showView('profile')"><b>●</b>Profilim</button>
-  </nav>
+<main id="detail" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="catalog">‹</button><div class="pageTitle">Kino sahifasi</div></div>
+  <div id="detailContent"></div>
+</main>
+
+<main id="vip" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="home">‹</button><div class="pageTitle">AIKINOUZ VIP</div></div>
+  <section class="vipHero">
+    <div class="big">♛</div><h1>AIKINOUZ VIP</h1><div class="sub">PREMIUM KOLLEKSIYA</div>
+    <div class="benefits"><div class="benefit"><b>💎</b>Eksklyuziv</div><div class="benefit"><b>🎬</b>Premium kino</div><div class="benefit"><b>⚡</b>Tez kirish</div></div>
+  </section>
+  <div id="vipGrid" class="catalog"></div>
+</main>
+
+<main id="search" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="home">‹</button><div class="pageTitle">Qidiruv</div></div>
+  <div class="searchBox"><input id="searchOnly" placeholder="Kino yoki serial nomini yozing..."></div>
+  <div id="searchGrid" class="catalog"></div>
+</main>
+
+<main id="profile" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="home">‹</button><div class="pageTitle">Profil</div></div>
+  <div class="profile">
+    <div id="profileCard" class="profileCard"></div>
+    <div class="profileMenu">
+      <button class="profileItem" id="continueBtn"><span>▶ Davom ettirish</span><span>›</span></button>
+      <button class="profileItem" id="favoritesBtn"><span>♡ Sevimlilar</span><span>›</span></button>
+      <button class="profileItem gold" data-open="support"><span>🛟 AIKINOUZ SUPPORT</span><span>›</span></button>
+    </div>
+    <div class="sectionHead" style="margin-top:20px"><h2>❤️ Sevimlilar</h2></div>
+    <div id="favoritesGrid" class="catalog" style="padding:0"></div>
+  </div>
+</main>
+
+<main id="support" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="profile">‹</button><div class="pageTitle">Support</div></div>
+  <section class="supportCard">
+    <div class="supportTitle">👑 AIKINOUZ</div><div class="sub">PREMIUM KINO PLATFORMASI</div>
+    <div class="supportMeta">
+      <div>🏢 <b>Kompaniya:</b> AIKINOUZ</div>
+      <div>👑 <b>Kompaniya prezidenti:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI</div>
+      <div>📧 <b>Email:</b> boburshox1311m@gmail.com</div>
+      <div>🧩 <b>Project:</b> AIKINOUZ / AIKINO_UZ_BOT</div>
+      <div>© 2026 AIKINOUZ. All rights reserved.</div>
+      <div><b>Project owner / author:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI</div>
+    </div>
+    <div class="supportForm"><h3>💬 Adminga yozish</h3><textarea id="supportMessage" maxlength="2000" placeholder="Savol, muammo yoki taklifingizni yozing..."></textarea><button id="supportSend" class="supportSend">📨 XABARNI YUBORISH</button><div id="supportStatus" class="supportNote">Xabaringiz AIKINOUZ adminiga yuboriladi.</div></div>
+  </section>
+</main>
+
+<nav class="bottom">
+  <button class="navBtn active" data-nav="home"><b>⌂</b>Bosh sahifa</button>
+  <button class="navBtn" data-nav="catalog"><b>▦</b>Kinolar</button>
+  <button class="navBtn" data-nav="search"><b>⌕</b>Qidiruv</button>
+  <button class="navBtn" data-nav="vip"><b>♛</b>VIP</button>
+  <button class="navBtn" data-nav="profile"><b>●</b>Profil</button>
+</nav>
 </div>
-<script>
-const tg=window.Telegram?.WebApp;
-if(tg){
-  tg.ready();
-  tg.expand();
-  try{tg.setHeaderColor('#050505')}catch(e){}
-  try{tg.setBackgroundColor('#050505')}catch(e){}
-  try{tg.setBottomBarColor('#080808')}catch(e){}
-  try{
-    if(typeof tg.requestFullscreen==='function') tg.requestFullscreen();
-  }catch(e){
-    tg.expand();
-  }
-}
-function closeApp(){
-  if(tg?.close) tg.close();
-  else history.back();
-}
-const initData=tg?.initData||''; let movies=[]; let me={authenticated:false,favorite_ids:[]};
-function syncViewport(){
-  const h=tg?.viewportStableHeight||tg?.viewportHeight||window.innerHeight;
-  document.documentElement.style.setProperty('--app-height',h+'px');
-}
-syncViewport();
-if(tg?.onEvent){
-  tg.onEvent('viewportChanged',syncViewport);
-  tg.onEvent('fullscreenChanged',syncViewport);
-}
-const api=(url,opt={})=>fetch(url,{...opt,headers:{...(opt.headers||{}),'X-Telegram-Init-Data':initData}}).then(r=>r.json());
 
-function badgeHTML(m){let out='';if(m.badge)out+=`<span class="badge">${m.badge}</span>`;if(m.is_vip)out+=`<span class="badge vip">VIP</span>`;return out}
-function cardHTML(m){return `<div class="card" onclick="openMovie(${m.id})"><div class="poster">${m.poster_url?`<img src="${m.poster_url}" loading="lazy">`:'<div class="posterFallback">🎬</div>'}${badgeHTML(m)}</div><div class="title">${escapeHtml(m.title)}</div><div class="meta">👁 ${m.views.toLocaleString()} · ${m.episode_count} qism</div></div>`}
-function escapeHtml(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function showView(id){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===id));window.scrollTo(0,0);if(id==='profile')renderProfile()}
-function renderHome(){const trend=movies.filter(m=>m.views>=1000).sort((a,b)=>b.views-a.views).slice(0,8);document.getElementById('trendRow').innerHTML=(trend.length?trend:movies.slice(0,6)).map(cardHTML).join('');document.getElementById('newRow').innerHTML=movies.filter(m=>!m.is_vip).slice(0,8).map(cardHTML).join('');document.getElementById('vipGrid').innerHTML=movies.filter(m=>m.is_vip).map(cardHTML).join('')||'<div class="empty">VIP kinolar hozircha qo‘shilmagan.</div>'}
-function renderCatalog(){const q=(document.getElementById('searchInput')?.value||'').toLowerCase().trim();const list=movies.filter(m=>!q||m.title.toLowerCase().includes(q));document.getElementById('catalogGrid').innerHTML=list.map(cardHTML).join('')||'<div class="empty">Kino topilmadi.</div>'}
-async function openMovie(id){showView('detail');document.getElementById('detailContent').innerHTML='<div class="empty">Yuklanmoqda...</div>';const m=await api('/app/api/movie/'+id);const fav=me.favorite_ids?.includes(m.id);document.getElementById('detailContent').innerHTML=`<div class="detailHero">${m.poster_url?`<img src="${m.poster_url}">`:'<div class="posterFallback" style="height:360px">🎬</div>'}</div><div class="detailBody"><h1>${escapeHtml(m.title)}</h1><div class="chips"><span class="chip">👁 ${m.views.toLocaleString()} ko‘rish</span><span class="chip">🎞 ${m.episode_count} qism</span>${m.badge?`<span class="chip">🔥 ${m.badge}</span>`:''}${m.is_vip?'<span class="chip">💎 VIP</span>':''}</div><div class="desc">${escapeHtml(m.description)||'AIKINOUZ kino kolleksiyasi.'}</div><div class="actions"><button class="goldBtn" onclick="openFirstEpisode(${m.id},${m.episodes[0]?.id||0})">▶ Tomosha qilish</button><button class="darkBtn" onclick="toggleFavorite(${m.id})">${fav?'♥ Sevimlida':'♡ Sevimlilar'}</button></div><h3>Qismlar</h3><div class="episodes">${m.episodes.map(e=>`<div class="episode"><span><b>${e.number}-QISM</b></span><button onclick="openEpisode(${e.id})">▶ Ochish</button></div>`).join('')||'<div class="empty">Qismlar yo‘q.</div>'}</div></div>`}
-}
-function openEpisode(id){if(!id)return;const url='https://t.me/AIKINO_UZ_BOT?start=ep_'+id;if(tg?.openTelegramLink)tg.openTelegramLink(url);else location.href=url}
-function openFirstEpisode(movieId,id){if(id)openEpisode(id)}
-async function toggleFavorite(id){if(!initData){alert('Sevimlilar Telegram ichida ishlaydi.');return}const r=await api('/app/api/favorite/'+id,{method:'POST'});if(r.error==='vip_required'){alert('Bu kino uchun VIP kerak.');return}if(r.favorite&&!me.favorite_ids.includes(id))me.favorite_ids.push(id);if(!r.favorite)me.favorite_ids=me.favorite_ids.filter(x=>x!==id);openMovie(id)}
-async function renderProfile(){if(!me.authenticated){document.getElementById('profileCard').innerHTML='<div class="profileName">Telegram ichida oching</div><div class="status">Profil va sevimlilar uchun Mini App bot ichidan ochilishi kerak.</div>';document.getElementById('favoritesGrid').innerHTML='';return}const u=me.user;document.getElementById('profileCard').innerHTML=`<div class="profileName">${escapeHtml((u.first_name||'')+' '+(u.last_name||''))}</div><div class="status">${me.vip?'💎 VIP ACTIVE':'✨ STANDARD'}${me.continue?` · ▶ ${escapeHtml(me.continue.movie_title)} ${me.continue.episode_number}-qism`:''}</div>`;document.getElementById('favoritesGrid').innerHTML=movies.filter(m=>me.favorite_ids.includes(m.id)).map(cardHTML).join('')||'<div class="empty">Hozircha sevimli kinolar yo‘q.</div>'}
-async function sendSupport(){
-  const box=document.getElementById('supportMessage');
-  const btn=document.getElementById('supportSendBtn');
-  const status=document.getElementById('supportStatus');
-  const message=(box?.value||'').trim();
-  if(!initData){status.textContent='Support Telegram ichida ochilganda ishlaydi.';return}
-  if(message.length<3){status.textContent='Xabarni biroz to‘liqroq yozing.';return}
-  btn.disabled=true;btn.textContent='⏳ YUBORILMOQDA...';status.textContent='Xabar yuborilmoqda...';
-  try{
-    const r=await api('/app/api/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});
-    if(r.ok){
-      box.value='';
-      status.textContent='✅ Xabaringiz adminga yuborildi.';
-      if(tg?.HapticFeedback) try{tg.HapticFeedback.notificationOccurred('success')}catch(e){}
-    }else{
-      status.textContent='Xabar yuborilmadi. Qayta urinib ko‘ring.';
-    }
-  }catch(e){
-    status.textContent='Xabar yuborilmadi. Internetni tekshirib qayta urinib ko‘ring.';
-  }finally{
-    btn.disabled=false;btn.textContent='📨 XABARNI YUBORISH';
+<script>
+(function(){
+  var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+  if(tg){
+    try{tg.ready()}catch(e){}
+    try{tg.expand()}catch(e){}
+    try{tg.setHeaderColor('#050505')}catch(e){}
+    try{tg.setBackgroundColor('#050505')}catch(e){}
+    try{if(typeof tg.requestFullscreen==='function') tg.requestFullscreen()}catch(e){}
   }
-}
-async function boot(){const [catalog,user]=await Promise.all([api('/app/api/catalog'),api('/app/api/me')]);movies=catalog.movies||[];me=user||{authenticated:false,favorite_ids:[]};if(me.authenticated)document.getElementById('avatar').textContent=(me.user.first_name||'A')[0].toUpperCase();renderHome();renderCatalog()}
-boot().catch(()=>{document.getElementById('catalogGrid').innerHTML='<div class="empty">Ma’lumot yuklanmadi. Qayta ochib ko‘ring.</div>'})
+
+  var initData = tg && tg.initData ? tg.initData : '';
+  var movies = [];
+  var me = {authenticated:false,favorite_ids:[]};
+  var catalogFilter = 'all';
+  var featuredId = 0;
+
+  function api(url,opt){
+    opt = opt || {};
+    opt.headers = opt.headers || {};
+    opt.headers['X-Telegram-Init-Data'] = initData;
+    return fetch(url,opt).then(function(r){
+      return r.json().then(function(j){ if(!r.ok) j._http=r.status; return j; });
+    });
+  }
+
+  function esc(s){
+    return String(s||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});
+  }
+  function fmt(n){return Number(n||0).toLocaleString('en-GB')}
+  function badge(m){
+    var out='';
+    if(m.badge) out += '<span class="badge">'+esc(m.badge)+'</span>';
+    if(m.is_vip) out += '<span class="badge vip">VIP</span>';
+    return out;
+  }
+  function card(m){
+    var poster=m.poster_url?'<img src="'+m.poster_url+'" loading="lazy" alt="">':'<div class="posterFallback">🎬</div>';
+    return '<div class="card movieCard" data-movie="'+m.id+'"><div class="poster">'+poster+badge(m)+'</div><div class="cardTitle">'+esc(m.title)+'</div><div class="cardMeta">👁 '+fmt(m.views)+' · '+m.episode_count+' qism</div></div>';
+  }
+
+  function show(id){
+    document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active')});
+    var el=document.getElementById(id); if(el) el.classList.add('active');
+    document.querySelectorAll('.navBtn').forEach(function(x){x.classList.toggle('active',x.getAttribute('data-nav')===id)});
+    window.scrollTo(0,0);
+    if(id==='profile') renderProfile();
+    if(id==='search') renderSearch();
+  }
+
+  function setFilter(f){
+    catalogFilter=f||'all';
+    document.querySelectorAll('.filterBtn').forEach(function(x){x.classList.toggle('active',x.getAttribute('data-filter')===catalogFilter)});
+    renderCatalog();
+  }
+
+  function filtered(source,filter,q){
+    var list=source.slice();
+    if(filter==='trend') list=list.filter(function(m){return m.views>=1000}).sort(function(a,b){return b.views-a.views});
+    if(filter==='vip') list=list.filter(function(m){return m.is_vip});
+    if(filter==='new') list=list.slice();
+    if(q){q=q.toLowerCase();list=list.filter(function(m){return m.title.toLowerCase().indexOf(q)>=0})}
+    return list;
+  }
+
+  function renderHome(){
+    var trend=filtered(movies,'trend','').slice(0,8);
+    var normal=movies.filter(function(m){return !m.is_vip}).slice(0,8);
+    var vip=movies.filter(function(m){return m.is_vip}).slice(0,8);
+    document.getElementById('trendRow').innerHTML=(trend.length?trend:normal).map(card).join('');
+    document.getElementById('newRow').innerHTML=normal.map(card).join('');
+    document.getElementById('vipRow').innerHTML=vip.length?vip.map(card).join(''):'<div class="empty">VIP kinolar hozircha yo‘q.</div>';
+    document.getElementById('vipGrid').innerHTML=vip.length?vip.map(card).join(''):'<div class="empty">VIP kinolar hozircha qo‘shilmagan.</div>';
+
+    var f=(trend[0]||normal[0]||movies[0]);
+    if(f){
+      featuredId=f.id;
+      var hero=document.getElementById('hero');
+      if(f.poster_url) hero.style.backgroundImage='url("'+f.poster_url+'")';
+      document.getElementById('heroTitle').textContent=f.title;
+      document.getElementById('heroMeta').textContent='👁 '+fmt(f.views)+' ko‘rish · 🎞 '+f.episode_count+' qism'+(f.badge?' · 🔥 '+f.badge:'')+(f.is_vip?' · 💎 VIP':'');
+      document.getElementById('heroDesc').textContent=f.description||'AIKINOUZ premium kino kolleksiyasi.';
+    }
+  }
+
+  function renderCatalog(){
+    var q=document.getElementById('searchInput').value.trim();
+    var list=filtered(movies,catalogFilter,q);
+    document.getElementById('catalogGrid').innerHTML=list.length?list.map(card).join(''):'<div class="empty">Kino topilmadi.</div>';
+  }
+  function renderSearch(){
+    var q=document.getElementById('searchOnly').value.trim();
+    var list=filtered(movies,'all',q);
+    document.getElementById('searchGrid').innerHTML=list.length?list.map(card).join(''):'<div class="empty">Kino topilmadi.</div>';
+  }
+
+  function openMovie(id){
+    show('detail');
+    document.getElementById('detailContent').innerHTML='<div class="empty">Yuklanmoqda...</div>';
+    api('/app/api/movie/'+id).then(function(m){
+      if(m._http){throw new Error('movie')}
+      var fav=me.favorite_ids && me.favorite_ids.indexOf(m.id)>=0;
+      var poster=m.poster_url?'<img src="'+m.poster_url+'" alt="">':'<div class="posterFallback">🎬</div>';
+      var eps=(m.episodes||[]).map(function(e){return '<div class="episode"><span><b>'+e.number+'-QISM</b></span><button class="epOpen" data-ep="'+e.id+'">▶ Ochish</button></div>'}).join('');
+      document.getElementById('detailContent').innerHTML=
+        '<div class="detailPoster">'+poster+'</div>'+
+        '<div class="detailBody"><h1>'+esc(m.title)+'</h1>'+
+        '<div class="chips"><span class="chip">👁 '+fmt(m.views)+' ko‘rish</span><span class="chip">🎞 '+m.episode_count+' qism</span>'+(m.badge?'<span class="chip">🔥 '+esc(m.badge)+'</span>':'')+(m.is_vip?'<span class="chip">💎 VIP</span>':'')+'</div>'+
+        '<div class="desc">'+esc(m.description||'AIKINOUZ premium kino kolleksiyasi.')+'</div>'+
+        '<div class="detailActions"><button id="watchFirst" class="goldBtn">▶ Tomosha qilish</button><button id="favMovie" class="darkBtn">'+(fav?'♥ Sevimlida':'♡ Sevimlilar')+'</button></div>'+
+        '<div class="tabs"><button class="tab active">Qismlar</button><button class="tab">Tavsif</button></div>'+
+        '<div class="episodes">'+(eps||'<div class="empty">Qismlar hozircha yo‘q.</div>')+'</div></div>';
+
+      var first=(m.episodes||[])[0];
+      var w=document.getElementById('watchFirst'); if(w) w.onclick=function(){if(first) openEpisode(first.id)};
+      var fv=document.getElementById('favMovie'); if(fv) fv.onclick=function(){toggleFavorite(m.id)};
+      document.querySelectorAll('.epOpen').forEach(function(b){b.onclick=function(){openEpisode(Number(b.getAttribute('data-ep')))}});
+    }).catch(function(){document.getElementById('detailContent').innerHTML='<div class="empty">Kino ma’lumotini yuklab bo‘lmadi.</div>'});
+  }
+
+  function openEpisode(id){
+    if(!id)return;
+    var url='https://t.me/AIKINO_UZ_BOT?start=ep_'+id;
+    try{if(tg&&tg.openTelegramLink){tg.openTelegramLink(url);return}}catch(e){}
+    window.location.href=url;
+  }
+
+  function toggleFavorite(id){
+    if(!initData){alert('Sevimlilar Telegram ichida ishlaydi.');return}
+    api('/app/api/favorite/'+id,{method:'POST'}).then(function(r){
+      if(r.error==='vip_required'){alert('Bu kino uchun VIP kerak.');return}
+      me.favorite_ids=me.favorite_ids||[];
+      var i=me.favorite_ids.indexOf(id);
+      if(r.favorite&&i<0)me.favorite_ids.push(id);
+      if(!r.favorite&&i>=0)me.favorite_ids.splice(i,1);
+      openMovie(id);
+    });
+  }
+
+  function renderProfile(){
+    var cardEl=document.getElementById('profileCard');
+    var favEl=document.getElementById('favoritesGrid');
+    if(!me.authenticated){
+      cardEl.innerHTML='<div class="profileName">Telegram orqali kiring</div><div class="status">Profil va sevimlilar bot ichidan ochilganda ishlaydi.</div>';
+      favEl.innerHTML='<div class="empty">Profil ma’lumoti mavjud emas.</div>';
+      return;
+    }
+    var u=me.user||{};
+    cardEl.innerHTML='<div class="profileName">'+esc((u.first_name||'')+' '+(u.last_name||''))+'</div><div class="status">'+(me.vip?'💎 VIP ACTIVE':'✨ STANDARD')+(me.continue?' · ▶ '+esc(me.continue.movie_title)+' '+me.continue.episode_number+'-qism':'')+'</div>';
+    var fav=movies.filter(function(m){return (me.favorite_ids||[]).indexOf(m.id)>=0});
+    favEl.innerHTML=fav.length?fav.map(card).join(''):'<div class="empty">Hozircha sevimli kinolar yo‘q.</div>';
+  }
+
+  function sendSupport(){
+    var box=document.getElementById('supportMessage'), btn=document.getElementById('supportSend'), st=document.getElementById('supportStatus');
+    var message=(box.value||'').trim();
+    if(!initData){st.textContent='Support Telegram ichida ishlaydi.';return}
+    if(message.length<3){st.textContent='Xabarni biroz to‘liqroq yozing.';return}
+    btn.disabled=true;btn.textContent='⏳ YUBORILMOQDA...';st.textContent='Xabar yuborilmoqda...';
+    api('/app/api/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:message})}).then(function(r){
+      if(r.ok){box.value='';st.textContent='✅ Xabaringiz adminga yuborildi.'} else st.textContent='Xabar yuborilmadi. Qayta urinib ko‘ring.';
+    }).catch(function(){st.textContent='Xabar yuborilmadi. Internetni tekshiring.'}).finally(function(){btn.disabled=false;btn.textContent='📨 XABARNI YUBORISH'});
+  }
+
+  document.addEventListener('click',function(e){
+    var open=e.target.closest('[data-open]');
+    if(open){var target=open.getAttribute('data-open');var f=open.getAttribute('data-filter');if(f)setFilter(f);show(target);return}
+    var nav=e.target.closest('[data-nav]');
+    if(nav){show(nav.getAttribute('data-nav'));return}
+    var filter=e.target.closest('.filterBtn');
+    if(filter){setFilter(filter.getAttribute('data-filter'));return}
+    var movie=e.target.closest('.movieCard');
+    if(movie){openMovie(Number(movie.getAttribute('data-movie')));return}
+  });
+
+  document.getElementById('searchInput').addEventListener('input',renderCatalog);
+  document.getElementById('searchOnly').addEventListener('input',renderSearch);
+  document.getElementById('heroWatch').addEventListener('click',function(){if(featuredId)openMovie(featuredId)});
+  document.getElementById('heroCatalog').addEventListener('click',function(){show('catalog')});
+  document.getElementById('closeApp').addEventListener('click',function(){try{if(tg)tg.close();else history.back()}catch(e){history.back()}});
+  document.getElementById('supportSend').addEventListener('click',sendSupport);
+  document.getElementById('continueBtn').addEventListener('click',function(){if(me.continue)openEpisode(me.continue.episode_id);else alert('Hali tomosha boshlangan kino yo‘q.')});
+  document.getElementById('favoritesBtn').addEventListener('click',function(){show('profile');setTimeout(function(){document.getElementById('favoritesGrid').scrollIntoView({behavior:'smooth'})},50)});
+
+  Promise.all([api('/app/api/catalog'),api('/app/api/me')]).then(function(res){
+    movies=res[0].movies||[];
+    me=res[1]||{authenticated:false,favorite_ids:[]};
+    if(me.authenticated&&me.user&&me.user.first_name)document.getElementById('avatar').textContent=me.user.first_name.charAt(0).toUpperCase();
+    renderHome();renderCatalog();renderSearch();renderProfile();
+  }).catch(function(){
+    document.getElementById('trendRow').innerHTML='<div class="empty">Kinolarni yuklab bo‘lmadi. Appni qayta oching.</div>';
+  });
+})();
 </script>
-</body></html>"""
+</body>
+</html>"""\n
