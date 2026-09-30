@@ -376,6 +376,36 @@ button{cursor:pointer}
 .supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
 .empty{padding:28px 14px;color:#888;text-align:center}
 
+.playerOverlay{position:fixed;inset:0;z-index:1000;background:#000;display:none;overflow:hidden}
+.playerOverlay.active{display:block}
+.videoStage{position:absolute;inset:0;background:#000;display:flex;align-items:center;justify-content:center}
+.videoStage video{width:100%;height:100%;object-fit:contain;background:#000}
+.playerControls{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;background:linear-gradient(180deg,#000b 0%,transparent 32%,transparent 62%,#000d 100%);opacity:1;transition:opacity .22s ease}
+.playerControls.hiddenControls{opacity:0;pointer-events:none}
+.playerTop{display:flex;align-items:center;gap:11px;padding:calc(16px + env(safe-area-inset-top)) 16px 10px}
+.playerClose{width:40px;height:40px;border:0;border-radius:50%;background:#161616c9;color:#fff;font-size:22px}
+.playerHeading{min-width:0}.playerMovieTitle{font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.playerEpisodeTitle{font-size:11px;color:#c7c7c7;margin-top:2px}
+.playerCenter{display:flex;align-items:center;justify-content:center;gap:24px}
+.circleControl{width:58px;height:58px;border-radius:50%;border:0;background:#3a322dcc;color:#fff;font-size:25px;display:grid;place-items:center;backdrop-filter:blur(8px)}
+.circleControl.playMain{width:72px;height:72px;font-size:31px;background:#493c32e8}
+.skipControl{position:relative;font-size:14px;font-weight:900}.skipControl b{font-size:20px}
+.playerBottom{padding:10px 14px calc(16px + env(safe-area-inset-bottom))}
+.timeRow{display:flex;justify-content:space-between;font-size:11px;color:#e7e7e7;margin-bottom:3px}
+.progress{width:100%;accent-color:#e31f2b}
+.playerActions{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.playerActionBtn{border:0;background:#171717c9;color:#fff;border-radius:12px;padding:9px 12px;font-weight:850;font-size:12px}
+.playlistDrawer{position:absolute;left:0;right:0;bottom:0;z-index:3;max-height:58%;background:#0b0b0bf8;border-top:1px solid #3b3021;border-radius:20px 20px 0 0;transform:translateY(105%);transition:transform .25s ease;overflow:auto;padding:14px 14px calc(18px + env(safe-area-inset-bottom))}
+.playlistDrawer.open{transform:translateY(0)}
+.drawerHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.drawerHead h3{margin:0;color:#f4c75c}.drawerClose{border:0;background:#191919;color:#fff;width:34px;height:34px;border-radius:10px}
+.playlistItems{display:grid;gap:8px}.playlistItem{display:flex;justify-content:space-between;align-items:center;border:1px solid #29251d;background:#111;color:#fff;border-radius:13px;padding:12px;text-align:left}.playlistItem.active{border-color:#b77a1d;background:#1c160d;color:#f5ca61}
+.playerError{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:30px;color:#fff;background:#050505}.playerError.show{display:grid}
+@media (orientation:landscape){
+  .playerTop{padding-top:calc(8px + env(safe-area-inset-top))}
+  .playerBottom{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+  .playlistDrawer{left:auto;top:0;right:0;bottom:0;width:min(380px,42vw);max-height:none;border-radius:20px 0 0 20px;border-top:0;border-left:1px solid #3b3021;transform:translateX(105%)}
+  .playlistDrawer.open{transform:translateX(0)}
+}
+
 .bottom{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;grid-template-columns:repeat(5,1fr);background:#070707f4;backdrop-filter:blur(20px);border-top:1px solid #201b13;padding:7px 6px calc(9px + env(safe-area-inset-bottom))}
 .navBtn{border:0;background:none;color:#858585;font-size:10px;font-weight:800;padding:5px 1px}.navBtn b{display:block;font-size:21px;margin-bottom:2px}.navBtn.active{color:#f4c75c}
 .hidden{display:none!important}
@@ -468,6 +498,38 @@ button{cursor:pointer}
   </section>
 </main>
 
+<div id="playerOverlay" class="playerOverlay">
+  <div id="videoStage" class="videoStage">
+    <video id="playerVideo" playsinline preload="metadata"></video>
+    <div id="playerError" class="playerError"><div><div style="font-size:42px">⚠️</div><h3>Video ochilmadi</h3><p>Bu qismni hozir stream qilib bo‘lmadi.</p></div></div>
+    <div id="playerControls" class="playerControls">
+      <div class="playerTop">
+        <button id="playerClose" class="playerClose">×</button>
+        <div class="playerHeading"><div id="playerMovieTitle" class="playerMovieTitle">AIKINOUZ</div><div id="playerEpisodeTitle" class="playerEpisodeTitle">1-qism</div></div>
+      </div>
+      <div class="playerCenter">
+        <button id="prevEpisode" class="circleControl">|◀</button>
+        <button id="back10" class="circleControl skipControl">↶<b>10</b></button>
+        <button id="playPause" class="circleControl playMain">▶</button>
+        <button id="forward10" class="circleControl skipControl"><b>10</b>↷</button>
+        <button id="nextEpisode" class="circleControl">▶|</button>
+      </div>
+      <div class="playerBottom">
+        <div class="timeRow"><span id="currentTime">0:00</span><span id="durationTime">0:00</span></div>
+        <input id="progressBar" class="progress" type="range" min="0" max="1000" value="0">
+        <div class="playerActions">
+          <button id="playlistToggle" class="playerActionBtn">☰ Qismlar</button>
+          <button id="playerFullscreen" class="playerActionBtn">⛶ To‘liq ekran</button>
+        </div>
+      </div>
+    </div>
+    <div id="playlistDrawer" class="playlistDrawer">
+      <div class="drawerHead"><h3>🎞 Qismlar</h3><button id="playlistClose" class="drawerClose">×</button></div>
+      <div id="playlistItems" class="playlistItems"></div>
+    </div>
+  </div>
+</div>
+
 <nav class="bottom">
   <button class="navBtn active" data-nav="home"><b>⌂</b>Bosh sahifa</button>
   <button class="navBtn" data-nav="catalog"><b>▦</b>Kinolar</button>
@@ -493,6 +555,9 @@ button{cursor:pointer}
   var me = {authenticated:false,favorite_ids:[]};
   var catalogFilter = 'all';
   var featuredId = 0;
+  var currentMovieData = null;
+  var currentEpisodeIndex = -1;
+  var playerHideTimer = null;
 
   function api(url,opt){
     opt = opt || {};
@@ -580,7 +645,7 @@ button{cursor:pointer}
       if(m._http){throw new Error('movie')}
       var fav=me.favorite_ids && me.favorite_ids.indexOf(m.id)>=0;
       var poster=m.poster_url?'<img src="'+m.poster_url+'" alt="">':'<div class="posterFallback">🎬</div>';
-      var eps=(m.episodes||[]).map(function(e){return '<div class="episode"><span><b>'+e.number+'-QISM</b></span><button class="epOpen" data-ep="'+e.id+'">▶ Ochish</button></div>'}).join('');
+      var eps=(m.episodes||[]).map(function(e,i){return '<div class="episode"><span><b>'+e.number+'-QISM</b></span><button class="epOpen" data-index="'+i+'">▶ Tomosha</button></div>'}).join('');
       document.getElementById('detailContent').innerHTML=
         '<div class="detailPoster">'+poster+'</div>'+
         '<div class="detailBody"><h1>'+esc(m.title)+'</h1>'+
@@ -590,18 +655,78 @@ button{cursor:pointer}
         '<div class="tabs"><button class="tab active">Qismlar</button><button class="tab">Tavsif</button></div>'+
         '<div class="episodes">'+(eps||'<div class="empty">Qismlar hozircha yo‘q.</div>')+'</div></div>';
 
+      currentMovieData=m;
       var first=(m.episodes||[])[0];
-      var w=document.getElementById('watchFirst'); if(w) w.onclick=function(){if(first) openEpisode(first.id)};
+      var w=document.getElementById('watchFirst'); if(w) w.onclick=function(){if(first) openPlayer(m,0)};
       var fv=document.getElementById('favMovie'); if(fv) fv.onclick=function(){toggleFavorite(m.id)};
-      document.querySelectorAll('.epOpen').forEach(function(b){b.onclick=function(){openEpisode(Number(b.getAttribute('data-ep')))}});
+      document.querySelectorAll('.epOpen').forEach(function(b){b.onclick=function(){openPlayer(m,Number(b.getAttribute('data-index')))}});
     }).catch(function(){document.getElementById('detailContent').innerHTML='<div class="empty">Kino ma’lumotini yuklab bo‘lmadi.</div>'});
   }
 
-  function openEpisode(id){
-    if(!id)return;
-    var url='https://t.me/AIKINO_UZ_BOT?start=ep_'+id;
-    try{if(tg&&tg.openTelegramLink){tg.openTelegramLink(url);return}}catch(e){}
-    window.location.href=url;
+  var playerOverlay=document.getElementById('playerOverlay');
+  var playerVideo=document.getElementById('playerVideo');
+  var playerControls=document.getElementById('playerControls');
+  var playlistDrawer=document.getElementById('playlistDrawer');
+  var playerError=document.getElementById('playerError');
+
+  function timeText(sec){
+    sec=Math.max(0,Math.floor(Number(sec)||0));
+    var h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;
+    return h>0?h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'):m+':'+String(s).padStart(2,'0');
+  }
+  function showPlayerControls(autoHide){
+    playerControls.classList.remove('hiddenControls');
+    clearTimeout(playerHideTimer);
+    if(autoHide && !playerVideo.paused){
+      playerHideTimer=setTimeout(function(){playerControls.classList.add('hiddenControls')},3500);
+    }
+  }
+  function renderPlaylist(){
+    if(!currentMovieData)return;
+    document.getElementById('playlistItems').innerHTML=(currentMovieData.episodes||[]).map(function(e,i){
+      return '<button class="playlistItem '+(i===currentEpisodeIndex?'active':'')+'" data-play-index="'+i+'"><span><b>'+e.number+'-QISM</b></span><span>'+(i===currentEpisodeIndex?'▶ Hozir':'Ochish')+'</span></button>';
+    }).join('');
+  }
+  function loadPlayerEpisode(index,autoplay){
+    if(!currentMovieData||!currentMovieData.episodes||!currentMovieData.episodes[index])return;
+    var ep=currentMovieData.episodes[index];
+    if(!ep.stream_url){
+      alert(currentMovieData.stream_locked?'Bu kino uchun VIP kerak.':'Video stream Telegram ichida ochilganda ishlaydi.');
+      return;
+    }
+    currentEpisodeIndex=index;
+    playerError.classList.remove('show');
+    document.getElementById('playerMovieTitle').textContent=currentMovieData.title;
+    document.getElementById('playerEpisodeTitle').textContent=ep.number+'-qism';
+    document.getElementById('progressBar').value=0;
+    document.getElementById('currentTime').textContent='0:00';
+    playerVideo.src=ep.stream_url;
+    playerVideo.load();
+    renderPlaylist();
+    showPlayerControls(true);
+    if(autoplay!==false){
+      var p=playerVideo.play(); if(p&&p.catch)p.catch(function(){showPlayerControls(false)});
+    }
+  }
+  function openPlayer(movie,index){
+    currentMovieData=movie;
+    playerOverlay.classList.add('active');
+    document.body.style.overflow='hidden';
+    loadPlayerEpisode(index,true);
+  }
+  function closePlayer(){
+    clearTimeout(playerHideTimer);
+    playerVideo.pause();
+    playerVideo.removeAttribute('src');
+    playerVideo.load();
+    playlistDrawer.classList.remove('open');
+    playerOverlay.classList.remove('active');
+    document.body.style.overflow='';
+    showPlayerControls(false);
+  }
+  function togglePlay(){
+    if(playerVideo.paused){var p=playerVideo.play();if(p&&p.catch)p.catch(function(){});}
+    else playerVideo.pause();
   }
 
   function toggleFavorite(id){
@@ -658,8 +783,44 @@ button{cursor:pointer}
   document.getElementById('heroCatalog').addEventListener('click',function(){show('catalog')});
   document.getElementById('closeApp').addEventListener('click',function(){try{if(tg)tg.close();else history.back()}catch(e){history.back()}});
   document.getElementById('supportSend').addEventListener('click',sendSupport);
-  document.getElementById('continueBtn').addEventListener('click',function(){if(me.continue)openEpisode(me.continue.episode_id);else alert('Hali tomosha boshlangan kino yo‘q.')});
+  document.getElementById('continueBtn').addEventListener('click',function(){
+    if(!me.continue){alert('Hali tomosha boshlangan kino yo‘q.');return}
+    api('/app/api/movie/'+me.continue.movie_id).then(function(m){
+      var idx=(m.episodes||[]).findIndex(function(e){return e.id===me.continue.episode_id});
+      openPlayer(m,idx>=0?idx:0);
+    });
+  });
   document.getElementById('favoritesBtn').addEventListener('click',function(){show('profile');setTimeout(function(){document.getElementById('favoritesGrid').scrollIntoView({behavior:'smooth'})},50)});
+
+  document.getElementById('playerClose').addEventListener('click',function(e){e.stopPropagation();closePlayer()});
+  document.getElementById('playPause').addEventListener('click',function(e){e.stopPropagation();togglePlay();showPlayerControls(true)});
+  document.getElementById('back10').addEventListener('click',function(e){e.stopPropagation();playerVideo.currentTime=Math.max(0,playerVideo.currentTime-10);showPlayerControls(true)});
+  document.getElementById('forward10').addEventListener('click',function(e){e.stopPropagation();playerVideo.currentTime=Math.min(playerVideo.duration||Infinity,playerVideo.currentTime+10);showPlayerControls(true)});
+  document.getElementById('prevEpisode').addEventListener('click',function(e){e.stopPropagation();if(currentEpisodeIndex>0)loadPlayerEpisode(currentEpisodeIndex-1,true)});
+  document.getElementById('nextEpisode').addEventListener('click',function(e){e.stopPropagation();if(currentMovieData&&currentEpisodeIndex<currentMovieData.episodes.length-1)loadPlayerEpisode(currentEpisodeIndex+1,true)});
+  document.getElementById('playlistToggle').addEventListener('click',function(e){e.stopPropagation();playlistDrawer.classList.add('open');showPlayerControls(false)});
+  document.getElementById('playlistClose').addEventListener('click',function(e){e.stopPropagation();playlistDrawer.classList.remove('open');showPlayerControls(true)});
+  document.getElementById('playlistItems').addEventListener('click',function(e){var b=e.target.closest('[data-play-index]');if(b){loadPlayerEpisode(Number(b.getAttribute('data-play-index')),true);playlistDrawer.classList.remove('open')}});
+  document.getElementById('playerFullscreen').addEventListener('click',function(e){
+    e.stopPropagation();
+    try{if(playerVideo.requestFullscreen)playerVideo.requestFullscreen();else if(playerVideo.webkitEnterFullscreen)playerVideo.webkitEnterFullscreen()}catch(err){}
+  });
+  document.getElementById('videoStage').addEventListener('click',function(e){
+    if(e.target.closest('button')||e.target.closest('input')||e.target.closest('.playlistDrawer'))return;
+    if(playerControls.classList.contains('hiddenControls'))showPlayerControls(true);
+    else{playerControls.classList.add('hiddenControls');clearTimeout(playerHideTimer)}
+  });
+  playerVideo.addEventListener('play',function(){document.getElementById('playPause').textContent='❚❚';showPlayerControls(true)});
+  playerVideo.addEventListener('pause',function(){document.getElementById('playPause').textContent='▶';showPlayerControls(false)});
+  playerVideo.addEventListener('loadedmetadata',function(){document.getElementById('durationTime').textContent=timeText(playerVideo.duration)});
+  playerVideo.addEventListener('timeupdate',function(){
+    document.getElementById('currentTime').textContent=timeText(playerVideo.currentTime);
+    if(playerVideo.duration)document.getElementById('progressBar').value=Math.round((playerVideo.currentTime/playerVideo.duration)*1000);
+  });
+  playerVideo.addEventListener('ended',function(){if(currentMovieData&&currentEpisodeIndex<currentMovieData.episodes.length-1)loadPlayerEpisode(currentEpisodeIndex+1,true);else showPlayerControls(false)});
+  playerVideo.addEventListener('error',function(){playerError.classList.add('show');showPlayerControls(false)});
+  document.getElementById('progressBar').addEventListener('input',function(e){if(playerVideo.duration)playerVideo.currentTime=(Number(e.target.value)/1000)*playerVideo.duration});
+  document.addEventListener('visibilitychange',function(){if(document.hidden&&playerOverlay.classList.contains('active'))playerVideo.pause()});
 
   Promise.all([api('/app/api/catalog'),api('/app/api/me')]).then(function(res){
     movies=res[0].movies||[];
