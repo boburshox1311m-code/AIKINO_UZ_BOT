@@ -7,12 +7,17 @@ import time
 from io import BytesIO
 from urllib.parse import parse_qsl
 
-from aiohttp import web
+from aiohttp import ClientSession, web
 from aiogram import Bot
 
 from .database import Database
 
 POSTER_CACHE: dict[int, bytes] = {}
+
+
+def _stream_signature(bot_token: str, episode_id: int, user_id: int, expires: int) -> str:
+    payload = f"{episode_id}:{user_id}:{expires}".encode()
+    return hmac.new(bot_token.encode(), payload, hashlib.sha256).hexdigest()
 
 
 def _verify_init_data(init_data: str, bot_token: str, max_age: int = 86400) -> dict | None:
@@ -75,6 +80,8 @@ async def api_catalog(request: web.Request) -> web.Response:
 
 async def api_movie(request: web.Request) -> web.Response:
     db: Database = request.app["db"]
+    bot: Bot = request.app["bot"]
+    admin_id: int = request.app["admin_id"]
     try:
         movie_id = int(request.match_info["movie_id"])
     except ValueError:
@@ -84,10 +91,25 @@ async def api_movie(request: web.Request) -> web.Response:
         raise web.HTTPNotFound()
     episodes = await db.episodes(movie_id, 0, 200)
     data = _movie_json(movie)
-    data["episodes"] = [
-        {"id": int(ep["id"]), "number": int(ep["episode_number"])}
-        for ep in episodes
-    ]
+
+    user = _request_user(request)
+    user_id = int(user["id"]) if user else 0
+    can_stream = bool(user_id)
+    if movie["is_vip"] and user_id != admin_id:
+        can_stream = can_stream and await db.is_vip_user(user_id)
+
+    expires = int(time.time()) + 6 * 60 * 60
+    payload = []
+    for ep in episodes:
+        item = {"id": int(ep["id"]), "number": int(ep["episode_number"])}
+        if can_stream:
+            sig = _stream_signature(bot.token, int(ep["id"]), user_id, expires)
+            item["stream_url"] = f"/app/stream/{ep['id']}?u={user_id}&e={expires}&s={sig}"
+        else:
+            item["stream_url"] = None
+        payload.append(item)
+    data["episodes"] = payload
+    data["stream_locked"] = bool(movie["is_vip"] and not can_stream)
     return web.json_response(data)
 
 
@@ -166,6 +188,73 @@ async def api_support(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def stream_episode(request: web.Request) -> web.StreamResponse:
+    db: Database = request.app["db"]
+    bot: Bot = request.app["bot"]
+    admin_id: int = request.app["admin_id"]
+    try:
+        episode_id = int(request.match_info["episode_id"])
+        user_id = int(request.query.get("u", "0"))
+        expires = int(request.query.get("e", "0"))
+        signature = request.query.get("s", "")
+    except ValueError:
+        raise web.HTTPForbidden()
+
+    if not user_id or expires < int(time.time()):
+        raise web.HTTPForbidden()
+    expected = _stream_signature(bot.token, episode_id, user_id, expires)
+    if not hmac.compare_digest(signature, expected):
+        raise web.HTTPForbidden()
+
+    ep = await db.episode(episode_id)
+    if not ep or not ep["file_id"]:
+        raise web.HTTPNotFound()
+    if ep["movie_is_vip"] and user_id != admin_id and not await db.is_vip_user(user_id):
+        raise web.HTTPForbidden()
+
+    try:
+        tg_file = await bot.get_file(ep["file_id"])
+    except Exception:
+        raise web.HTTPBadGateway(text="Telegram video faylini ochib bo‘lmadi")
+
+    file_url = f"https://api.telegram.org/file/bot{bot.token}/{tg_file.file_path}"
+    range_header = request.headers.get("Range")
+    upstream_headers = {"Range": range_header} if range_header else {}
+
+    try:
+        async with ClientSession() as session:
+            async with session.get(file_url, headers=upstream_headers) as upstream:
+                if upstream.status not in (200, 206):
+                    raise web.HTTPBadGateway(text="Video stream vaqtincha mavjud emas")
+                headers = {
+                    "Content-Type": upstream.headers.get("Content-Type", "video/mp4"),
+                    "Accept-Ranges": upstream.headers.get("Accept-Ranges", "bytes"),
+                    "Cache-Control": "private, no-store",
+                }
+                for key in ("Content-Length", "Content-Range"):
+                    if key in upstream.headers:
+                        headers[key] = upstream.headers[key]
+                response = web.StreamResponse(status=upstream.status, headers=headers)
+                await response.prepare(request)
+
+                first_range = not range_header or range_header.startswith("bytes=0-")
+                if first_range:
+                    try:
+                        await db.save_watch_progress(user_id, episode_id)
+                        await db.record_episode_view(user_id, episode_id)
+                    except Exception:
+                        pass
+
+                async for chunk in upstream.content.iter_chunked(256 * 1024):
+                    await response.write(chunk)
+                await response.write_eof()
+                return response
+    except web.HTTPException:
+        raise
+    except Exception:
+        raise web.HTTPBadGateway(text="Video stream xatosi")
+
+
 async def poster(request: web.Request) -> web.Response:
     db: Database = request.app["db"]
     bot: Bot = request.app["bot"]
@@ -201,6 +290,7 @@ def register_miniapp_routes(app: web.Application) -> None:
     app.router.add_get("/app/api/me", api_me)
     app.router.add_post("/app/api/favorite/{movie_id}", api_toggle_favorite)
     app.router.add_post("/app/api/support", api_support)
+    app.router.add_get("/app/stream/{episode_id}", stream_episode)
     app.router.add_get("/app/poster/{movie_id}", poster)
 
 
