@@ -183,8 +183,10 @@ async def api_payment_info(request: web.Request) -> web.Response:
             "enabled": bool(manual["enabled"]),
             "card_number": grouped if manual["enabled"] else "",
             "card_holder": manual["card_holder"] if manual["enabled"] else "",
-            "price_uzs": int(manual["price_uzs"]),
-            "vip_days": int(manual["vip_days"]),
+            "plans": [
+                {"days": int(days), "price_uzs": int(price)}
+                for days, price in manual["plans"]
+            ],
         },
     })
 
@@ -252,32 +254,55 @@ async def api_manual_receipt(request: web.Request) -> web.Response:
     settings = await db.manual_payment_settings()
     if not settings["enabled"]:
         return web.json_response({"error": "manual_disabled"}, status=503)
-    try:
-        reader = await request.multipart()
-        field = await reader.next()
-    except Exception:
-        raise web.HTTPBadRequest()
-    if not field or field.name != "receipt" or not field.filename:
-        return web.json_response({"error": "receipt_required"}, status=400)
-    content_type = (field.headers.get("Content-Type") or "").lower()
-    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
-        return web.json_response({"error": "image_only"}, status=400)
+
+    selected_days = None
+    filename = "receipt.jpg"
+    content_type = ""
     chunks = []
     total = 0
-    while True:
-        chunk = await field.read_chunk(size=256 * 1024)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > 8 * 1024 * 1024:
-            return web.json_response({"error": "too_large"}, status=400)
-        chunks.append(chunk)
+    try:
+        reader = await request.multipart()
+        while True:
+            field = await reader.next()
+            if field is None:
+                break
+            if field.name == "vip_days":
+                try:
+                    selected_days = int((await field.text()).strip())
+                except (TypeError, ValueError):
+                    selected_days = None
+            elif field.name == "receipt" and field.filename:
+                filename = field.filename or "receipt.jpg"
+                content_type = (field.headers.get("Content-Type") or "").lower()
+                while True:
+                    chunk = await field.read_chunk(size=256 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > 8 * 1024 * 1024:
+                        return web.json_response({"error": "too_large"}, status=400)
+                    chunks.append(chunk)
+    except Exception:
+        raise web.HTTPBadRequest()
+
+    plans = [(int(days), int(price)) for days, price in settings["plans"]]
+    match = next(((days, price) for days, price in plans if days == selected_days), None)
+    if not match:
+        return web.json_response({"error": "plan_required"}, status=400)
+    vip_days, amount_uzs = match
+
+    if not chunks:
+        return web.json_response({"error": "receipt_required"}, status=400)
+    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        return web.json_response({"error": "image_only"}, status=400)
     data = b"".join(chunks)
-    if not data:
-        return web.json_response({"error": "empty_file"}, status=400)
 
     user_id = int(user["id"])
-    state, payment = await db.create_manual_payment_request(user_id, settings["price_uzs"])
+    state, payment = await db.create_manual_payment_request(
+        user_id,
+        amount_uzs,
+        vip_days,
+    )
     if state == "duplicate":
         return web.json_response({"error": "pending_exists"}, status=409)
 
@@ -288,15 +313,20 @@ async def api_manual_receipt(request: web.Request) -> web.Response:
     full_name = " ".join(
         x for x in [user.get("first_name", ""), user.get("last_name", "")] if x
     ).strip() or "Foydalanuvchi"
+    if vip_days == 180:
+        plan_label = "6 oy"
+    elif vip_days == 365:
+        plan_label = "1 yil"
+    else:
+        plan_label = f"{vip_days} kun"
     caption = (
         "💳 <b>Mini App — yangi karta to‘lovi</b>\n\n"
         f"👤 {html.escape(full_name)}\n"
         f"🆔 Telegram ID: <code>{user_id}</code>\n"
-        f"💰 Summa: <b>{int(settings['price_uzs']):,} so‘m</b>\n"
-        f"⏳ VIP: <b>{int(settings['vip_days'])} kun</b>\n\n"
+        f"📦 Paket: <b>{plan_label}</b>\n"
+        f"💰 Summa: <b>{amount_uzs:,} so‘m</b>\n\n"
         "Bank ilovasida pul tushganini tekshirib, qaror bering."
     )
-    filename = field.filename or "receipt.jpg"
     try:
         sent = await bot.send_photo(
             admin_id,
@@ -308,8 +338,12 @@ async def api_manual_receipt(request: web.Request) -> web.Response:
     except TelegramAPIError:
         await db.review_manual_payment(payment["id"], "rejected")
         return web.json_response({"error": "send_failed"}, status=502)
-    return web.json_response({"ok": True, "payment_id": int(payment["id"])})
-
+    return web.json_response({
+        "ok": True,
+        "payment_id": int(payment["id"]),
+        "vip_days": vip_days,
+        "amount_uzs": amount_uzs,
+    })
 
 async def api_toggle_favorite(request: web.Request) -> web.Response:
     user = _request_user(request)
@@ -629,7 +663,7 @@ button{cursor:pointer}
 .vipGate{margin:12px 14px 24px;border:1px solid #6b4e20;border-radius:22px;padding:22px 18px;text-align:center;background:linear-gradient(145deg,#181108,#0b0b0b);box-shadow:0 18px 50px #0008}.vipGate .vipLock{font-size:42px}.vipGate h2{margin:10px 0 7px;color:#f5ca62;font-size:21px}.vipGate p{margin:0;color:#b9b9b9;font-size:13px;line-height:1.55}
 
 .profile{padding:10px 14px 24px}.profileCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0c0c0c);border-radius:20px;padding:18px}.profileName{font-size:21px;font-weight:950}.status{font-size:12px;color:#efc054;margin-top:5px}
-.profileMenu{margin-top:14px;display:grid;gap:8px}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.cardNumber{font-size:20px;letter-spacing:1.2px;font-weight:900;color:#ffe080;margin-top:13px}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
+.profileMenu{margin-top:14px;display:grid;gap:8px}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.manualPlan.active{outline:2px solid #f5ca62;background:#211708}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.cardNumber{font-size:20px;letter-spacing:1.2px;font-weight:900;color:#ffe080;margin-top:13px}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
 .supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:64px;height:64px;border-radius:18px;border:1px solid #7b5b24}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
 .empty{padding:28px 14px;color:#888;text-align:center}
 
@@ -1101,6 +1135,7 @@ button{cursor:pointer}
   }
 
   var paymentInfo=null;
+  var selectedManualDays=0;
 
   function moneyUzs(n){
     return Number(n||0).toLocaleString('en-GB').replace(/,/g,' ')+' so‘m';
@@ -1129,10 +1164,18 @@ button{cursor:pointer}
         plans.innerHTML='<div class="payStatus">Stars to‘lovi hozircha o‘chiq.</div>';
       }
       if(info.manual&&info.manual.enabled){
-        manual.innerHTML='<div class="payDesc">'+info.manual.vip_days+' kunlik VIP — <b>'+moneyUzs(info.manual.price_uzs)+'</b></div>'+
+        var plans=(info.manual.plans||[]);
+        selectedManualDays=plans.length?Number(plans[0].days):0;
+        var planButtons=plans.map(function(p){
+          var label=p.days===180?'6 oy':(p.days===365?'1 yil':p.days+' kun');
+          return '<button class="starPlan manualPlan '+(Number(p.days)===selectedManualDays?'active':'')+'" data-manual-days="'+p.days+'"><span>💳 '+label+'</span><span>'+moneyUzs(p.price_uzs)+'</span></button>';
+        }).join('');
+        manual.innerHTML=
+          '<div class="payDesc">VIP paketini tanlang:</div>'+
+          '<div class="starPlans">'+planButtons+'</div>'+
           '<div class="cardNumber">'+esc(info.manual.card_number)+'</div>'+
           '<div class="payDesc">Karta egasi: <b>'+esc(info.manual.card_holder)+'</b></div>'+
-          '<div class="payDesc">Pulni o‘tkazgach, pastdan chek rasmini tanlab yuboring.</div>';
+          '<div class="payDesc">Tanlangan paket summasini kartaga o‘tkazing, so‘ng chek rasmini yuboring.</div>';
         document.getElementById('receiptInput').style.display='block';
         document.getElementById('sendReceiptBtn').style.display='block';
       }else{
@@ -1183,7 +1226,10 @@ button{cursor:pointer}
     if(!input.files||!input.files[0]){status.textContent='Avval chek rasmini tanlang.';return}
     var file=input.files[0];
     if(file.size>8*1024*1024){status.textContent='Chek rasmi 8 MB dan kichik bo‘lsin.';return}
-    var form=new FormData();form.append('receipt',file,file.name);
+    if(!selectedManualDays){status.textContent='Avval VIP paketini tanlang.';return}
+    var form=new FormData();
+    form.append('vip_days',String(selectedManualDays));
+    form.append('receipt',file,file.name);
     btn.disabled=true;btn.textContent='⏳ YUBORILMOQDA...';status.textContent='Chek adminga yuborilmoqda...';
     fetch('/app/api/manual-receipt',{method:'POST',headers:{'X-Telegram-Init-Data':initData},body:form})
       .then(function(r){return r.json().then(function(j){j._http=r.status;return j})})
@@ -1212,6 +1258,12 @@ button{cursor:pointer}
     if(open){var target=open.getAttribute('data-open');var f=open.getAttribute('data-filter');if(f)setFilter(f);show(target);if(target==='payments')loadPayments();return}
     var star=e.target.closest('[data-star-days]');
     if(star){openStarsInvoice(Number(star.getAttribute('data-star-days')));return}
+    var manualPlan=e.target.closest('[data-manual-days]');
+    if(manualPlan){
+      selectedManualDays=Number(manualPlan.getAttribute('data-manual-days'));
+      document.querySelectorAll('.manualPlan').forEach(function(x){x.classList.toggle('active',Number(x.getAttribute('data-manual-days'))===selectedManualDays)});
+      return;
+    }
     var nav=e.target.closest('[data-nav]');
     if(nav){show(nav.getAttribute('data-nav'));return}
     var filter=e.target.closest('.filterBtn');
