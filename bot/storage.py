@@ -89,6 +89,9 @@ async def storage_worker(
     if not storage.enabled:
         log.info("R2 storage worker disabled: credentials are not configured")
         return
+    reset_count = await db.reset_stuck_storage_jobs()
+    if reset_count:
+        log.info("Reset %s stuck R2 storage job(s) for retry", reset_count)
     log.info("R2 storage worker started")
     while not stop_event.is_set():
         try:
@@ -143,10 +146,21 @@ async def storage_worker(
                         except OSError:
                             pass
                 except Exception as exc:
-                    log.exception("R2 archive failed for episode %s", episode_id)
-                    await db.mark_episode_storage_failed(episode_id, str(exc)[:500])
-        except Exception:
-            log.exception("Storage worker loop failed")
+                    error_name = type(exc).__name__
+                    safe_error = str(exc)
+                    if "/var/lib/telegram-bot-api/" in safe_error:
+                        safe_error = "Local Telegram file operation failed"
+                    log.error(
+                        "R2 archive failed: episode_id=%s error_type=%s",
+                        episode_id,
+                        error_name,
+                    )
+                    await db.mark_episode_storage_failed(
+                        episode_id,
+                        f"{error_name}: {safe_error}"[:500],
+                    )
+        except Exception as exc:
+            log.error("Storage worker loop failed: error_type=%s", type(exc).__name__)
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=10)
             except asyncio.TimeoutError:
