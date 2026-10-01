@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import json
 import time
 from io import BytesIO
@@ -150,6 +151,8 @@ async def api_me(request: web.Request) -> web.Response:
             "movie_id": int(progress["movie_id"]),
             "movie_title": progress["movie_title"],
             "episode_number": int(progress["episode_number"]),
+            "position_seconds": float(progress["position_seconds"] or 0),
+            "duration_seconds": float(progress["duration_seconds"] or 0),
         } if progress else None,
     })
 
@@ -189,14 +192,42 @@ async def api_support(request: web.Request) -> web.Response:
         return web.json_response({"error": "message_too_long"}, status=400)
     full_name = " ".join(x for x in [user.get("first_name", ""), user.get("last_name", "")] if x).strip()
     username = f"@{user.get('username')}" if user.get("username") else "username yo‘q"
+    safe_full_name = html.escape(full_name or "Foydalanuvchi")
+    safe_username = html.escape(username)
+    safe_message = html.escape(message)
     text = (
         "🛟 <b>AIKINOUZ SUPPORT</b>\n\n"
-        f"👤 <b>{full_name or 'Foydalanuvchi'}</b>\n"
-        f"🔗 {username}\n"
-        f"🆔 <code>{user.get('id')}</code>\n\n"
-        f"💬 <b>Xabar:</b>\n{message}"
+        f"👤 <b>{safe_full_name}</b>\n"
+        f"🔗 {safe_username}\n"
+        f"🆔 <code>{int(user.get('id'))}</code>\n\n"
+        f"💬 <b>Xabar:</b>\n{safe_message}"
     )
     await bot.send_message(admin_id, text)
+    return web.json_response({"ok": True})
+
+
+async def api_watch_progress(request: web.Request) -> web.Response:
+    user = _request_user(request)
+    if not user:
+        raise web.HTTPUnauthorized()
+    db: Database = request.app["db"]
+    admin_id: int = request.app["admin_id"]
+    try:
+        episode_id = int(request.match_info["episode_id"])
+        data = await request.json()
+        position = max(0.0, min(float(data.get("position", 0) or 0), 86400.0))
+        duration = max(0.0, min(float(data.get("duration", 0) or 0), 86400.0))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        raise web.HTTPBadRequest()
+    ep = await db.episode(episode_id)
+    if not ep or not ep["file_id"]:
+        raise web.HTTPNotFound()
+    user_id = int(user["id"])
+    if ep["movie_is_vip"] and user_id != admin_id and not await db.is_vip_user(user_id):
+        raise web.HTTPForbidden()
+    await db.save_watch_progress(user_id, episode_id, position, duration)
+    if str(data.get("event", "")) == "start":
+        await db.record_episode_view_once(user_id, episode_id)
     return web.json_response({"ok": True})
 
 
@@ -353,8 +384,10 @@ def register_miniapp_routes(app: web.Application) -> None:
     app.router.add_get("/app/api/me", api_me)
     app.router.add_post("/app/api/favorite/{movie_id}", api_toggle_favorite)
     app.router.add_post("/app/api/support", api_support)
+    app.router.add_post("/app/api/watch/{episode_id}", api_watch_progress)
     app.router.add_get("/app/stream/{episode_id}", stream_episode)
     app.router.add_get("/app/poster/{movie_id}", poster)
+    app.router.add_get("/favicon.ico", brand_logo)
 
 
 MINI_APP_HTML = r"""<!doctype html>
@@ -363,6 +396,7 @@ MINI_APP_HTML = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#050505">
+<link rel="icon" href="/app/logo.svg" type="image/svg+xml">
 <title>AIKINOUZ</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -637,6 +671,8 @@ button{cursor:pointer}
   var currentMovieData = null;
   var currentEpisodeIndex = -1;
   var playerHideTimer = null;
+  var lastProgressSave = 0;
+  var resumeAppliedEpisodeId = 0;
 
   function api(url,opt){
     opt = opt || {};
@@ -753,6 +789,25 @@ button{cursor:pointer}
     var h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;
     return h>0?h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'):m+':'+String(s).padStart(2,'0');
   }
+  function sendWatchProgress(force,eventName){
+    if(!initData||!currentMovieData||currentEpisodeIndex<0)return;
+    var ep=(currentMovieData.episodes||[])[currentEpisodeIndex];
+    if(!ep)return;
+    var now=Date.now();
+    if(!force && now-lastProgressSave<10000)return;
+    lastProgressSave=now;
+    api('/app/api/watch/'+ep.id,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        position:Number(playerVideo.currentTime||0),
+        duration:Number(playerVideo.duration||0),
+        event:eventName||'progress'
+      }),
+      keepalive:true
+    }).catch(function(){});
+  }
+
   function showPlayerControls(autoHide){
     playerControls.classList.remove('hiddenControls');
     clearTimeout(playerHideTimer);
@@ -776,6 +831,8 @@ button{cursor:pointer}
       return;
     }
     currentEpisodeIndex=index;
+    lastProgressSave=0;
+    resumeAppliedEpisodeId=0;
     playerError.classList.remove('show');
     document.getElementById('playerMovieTitle').textContent=currentMovieData.title;
     document.getElementById('playerEpisodeTitle').textContent=ep.number+'-qism';
@@ -797,6 +854,7 @@ button{cursor:pointer}
   }
   function closePlayer(){
     clearTimeout(playerHideTimer);
+    sendWatchProgress(true,'progress');
     playerVideo.pause();
     playerVideo.removeAttribute('src');
     playerVideo.load();
@@ -891,17 +949,45 @@ button{cursor:pointer}
     togglePlay();
     showPlayerControls(true);
   });
-  playerVideo.addEventListener('play',function(){document.getElementById('playPause').textContent='❚❚';showPlayerControls(true)});
-  playerVideo.addEventListener('pause',function(){document.getElementById('playPause').textContent='▶';showPlayerControls(true)});
-  playerVideo.addEventListener('loadedmetadata',function(){document.getElementById('durationTime').textContent=timeText(playerVideo.duration)});
+  playerVideo.addEventListener('play',function(){
+    document.getElementById('playPause').textContent='❚❚';
+    showPlayerControls(true);
+    sendWatchProgress(true,'start');
+  });
+  playerVideo.addEventListener('pause',function(){
+    document.getElementById('playPause').textContent='▶';
+    showPlayerControls(true);
+    sendWatchProgress(true,'progress');
+  });
+  playerVideo.addEventListener('loadedmetadata',function(){
+    document.getElementById('durationTime').textContent=timeText(playerVideo.duration);
+    var ep=currentMovieData&&currentEpisodeIndex>=0?(currentMovieData.episodes||[])[currentEpisodeIndex]:null;
+    if(ep&&me.continue&&me.continue.episode_id===ep.id&&resumeAppliedEpisodeId!==ep.id){
+      var resume=Number(me.continue.position_seconds||0);
+      if(resume>2 && resume<Math.max(0,(playerVideo.duration||0)-5)){
+        try{playerVideo.currentTime=resume}catch(e){}
+      }
+      resumeAppliedEpisodeId=ep.id;
+    }
+  });
   playerVideo.addEventListener('timeupdate',function(){
     document.getElementById('currentTime').textContent=timeText(playerVideo.currentTime);
     if(playerVideo.duration)document.getElementById('progressBar').value=Math.round((playerVideo.currentTime/playerVideo.duration)*1000);
+    sendWatchProgress(false,'progress');
   });
-  playerVideo.addEventListener('ended',function(){if(currentMovieData&&currentEpisodeIndex<currentMovieData.episodes.length-1)loadPlayerEpisode(currentEpisodeIndex+1,true);else showPlayerControls(false)});
+  playerVideo.addEventListener('ended',function(){
+    sendWatchProgress(true,'progress');
+    if(currentMovieData&&currentEpisodeIndex<currentMovieData.episodes.length-1)loadPlayerEpisode(currentEpisodeIndex+1,true);
+    else showPlayerControls(false);
+  });
   playerVideo.addEventListener('error',function(){playerError.classList.add('show');showPlayerControls(false)});
   document.getElementById('progressBar').addEventListener('input',function(e){if(playerVideo.duration)playerVideo.currentTime=(Number(e.target.value)/1000)*playerVideo.duration});
-  document.addEventListener('visibilitychange',function(){if(document.hidden&&playerOverlay.classList.contains('active'))playerVideo.pause()});
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden&&playerOverlay.classList.contains('active')){
+      sendWatchProgress(true,'progress');
+      playerVideo.pause();
+    }
+  });
 
   Promise.all([api('/app/api/catalog'),api('/app/api/me')]).then(function(res){
     movies=res[0].movies||[];
