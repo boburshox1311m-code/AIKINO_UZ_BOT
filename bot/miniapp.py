@@ -134,6 +134,8 @@ async def api_me(request: web.Request) -> web.Response:
         return web.json_response({"authenticated": False})
     db: Database = request.app["db"]
     user_id = int(user["id"])
+    admin_id: int = request.app["admin_id"]
+    await db.record_app_visit_once(user_id)
     vip = await db.vip_user(user_id)
     progress = await db.watch_progress(user_id)
     favorites = await db.favorite_movies(user_id, 100)
@@ -145,7 +147,8 @@ async def api_me(request: web.Request) -> web.Response:
             "last_name": user.get("last_name", ""),
             "username": user.get("username", ""),
         },
-        "vip": bool(vip) or user_id == request.app["admin_id"],
+        "is_admin": user_id == admin_id,
+        "vip": bool(vip) or user_id == admin_id,
         "vip_expires_at": vip["expires_at"].isoformat() if vip else None,
         "favorite_ids": [int(movie["id"]) for movie in favorites],
         "continue": {
@@ -363,6 +366,38 @@ async def api_toggle_favorite(request: web.Request) -> web.Response:
     return web.json_response({"favorite": added})
 
 
+async def api_admin_stats(request: web.Request) -> web.Response:
+    user = _request_user(request)
+    if not user:
+        raise web.HTTPUnauthorized()
+    admin_id: int = request.app["admin_id"]
+    if int(user["id"]) != admin_id:
+        raise web.HTTPForbidden()
+    db: Database = request.app["db"]
+    stats = await db.app_statistics(admin_id)
+    top_movies = await db.app_top_movies(admin_id, 5)
+    return web.json_response({
+        "total_users": int(stats["total_users"] or 0),
+        "total_sessions": int(stats["total_sessions"] or 0),
+        "today_users": int(stats["today_users"] or 0),
+        "today_sessions": int(stats["today_sessions"] or 0),
+        "users_7d": int(stats["users_7d"] or 0),
+        "users_30d": int(stats["users_30d"] or 0),
+        "total_viewers": int(stats["total_viewers"] or 0),
+        "total_views": int(stats["total_views"] or 0),
+        "today_viewers": int(stats["today_viewers"] or 0),
+        "today_views": int(stats["today_views"] or 0),
+        "active_vips": int(stats["active_vips"] or 0),
+        "top_movies": [{
+            "id": int(movie["id"]),
+            "title": movie["title"],
+            "emoji": movie["emoji"],
+            "views": int(movie["view_count"] or 0),
+            "viewers": int(movie["unique_viewers"] or 0),
+        } for movie in top_movies],
+    })
+
+
 async def api_support(request: web.Request) -> web.Response:
     user = _request_user(request)
     if not user:
@@ -416,6 +451,7 @@ async def api_watch_progress(request: web.Request) -> web.Response:
     await db.save_watch_progress(user_id, episode_id, position, duration)
     if str(data.get("event", "")) == "start":
         await db.record_episode_view_once(user_id, episode_id)
+        await db.record_app_watch_once(user_id, episode_id)
     return web.json_response({"ok": True})
 
 
@@ -460,6 +496,7 @@ async def stream_episode(request: web.Request) -> web.StreamResponse:
         try:
             await db.save_watch_progress(user_id, episode_id)
             await db.record_episode_view(user_id, episode_id)
+            await db.record_app_watch_once(user_id, episode_id)
         except Exception:
             pass
         return web.FileResponse(
@@ -503,6 +540,7 @@ async def stream_episode(request: web.Request) -> web.StreamResponse:
                     try:
                         await db.save_watch_progress(user_id, episode_id)
                         await db.record_episode_view(user_id, episode_id)
+                        await db.record_app_watch_once(user_id, episode_id)
                     except Exception:
                         pass
 
@@ -571,6 +609,7 @@ def register_miniapp_routes(app: web.Application) -> None:
     app.router.add_get("/app/api/movie/{movie_id}", api_movie)
     app.router.add_get("/app/api/me", api_me)
     app.router.add_get("/app/api/payment-info", api_payment_info)
+    app.router.add_get("/app/api/admin/stats", api_admin_stats)
     app.router.add_post("/app/api/payment-terms/accept", api_accept_payment_terms)
     app.router.add_post("/app/api/stars-invoice/{days}", api_stars_invoice)
     app.router.add_post("/app/api/manual-receipt", api_manual_receipt)
@@ -663,7 +702,7 @@ button{cursor:pointer}
 .vipGate{margin:12px 14px 24px;border:1px solid #6b4e20;border-radius:22px;padding:22px 18px;text-align:center;background:linear-gradient(145deg,#181108,#0b0b0b);box-shadow:0 18px 50px #0008}.vipGate .vipLock{font-size:42px}.vipGate h2{margin:10px 0 7px;color:#f5ca62;font-size:21px}.vipGate p{margin:0;color:#b9b9b9;font-size:13px;line-height:1.55}
 
 .profile{padding:10px 14px 24px}.profileCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0c0c0c);border-radius:20px;padding:18px}.profileName{font-size:21px;font-weight:950}.status{font-size:12px;color:#efc054;margin-top:5px}
-.profileMenu{margin-top:14px;display:grid;gap:8px}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.manualPlan.active{outline:2px solid #f5ca62;background:#211708}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.cardNumber{font-size:20px;letter-spacing:1.2px;font-weight:900;color:#ffe080;margin-top:13px}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
+.profileMenu{margin-top:14px;display:grid;gap:8px}.statsWrap{padding:8px 14px 28px}.statsGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.statCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:17px;padding:14px}.statValue{font-size:27px;font-weight:950;color:#f5ca62}.statLabel{font-size:11px;color:#aaa;margin-top:4px}.statsSection{margin-top:14px;border:1px solid #32291e;background:#0d0d0d;border-radius:18px;padding:15px}.statsSection h3{margin:0 0 10px;color:#f5ca62}.topMovieRow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #222;font-size:12px}.topMovieRow:last-child{border-bottom:0}.statsRefresh{width:100%;margin-top:12px;border:0;border-radius:13px;padding:12px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.manualPlan.active{outline:2px solid #f5ca62;background:#211708}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.cardNumber{font-size:20px;letter-spacing:1.2px;font-weight:900;color:#ffe080;margin-top:13px}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
 .supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:64px;height:64px;border-radius:18px;border:1px solid #7b5b24}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
 .empty{padding:28px 14px;color:#888;text-align:center}
 
@@ -787,10 +826,24 @@ button{cursor:pointer}
       <button class="profileItem" id="continueBtn"><span>▶ Davom ettirish</span><span>›</span></button>
       <button class="profileItem gold" data-open="payments"><span>⭐ VIP / To‘lov</span><span>›</span></button>
       <button class="profileItem" id="favoritesBtn"><span>♡ Sevimlilar</span><span>›</span></button>
+      <button class="profileItem gold" id="adminStatsBtn" data-open="appstats" style="display:none"><span>📊 APP STATISTIKA</span><span>›</span></button>
       <button class="profileItem gold" data-open="support"><span>🛟 AIKINOUZ SUPPORT</span><span>›</span></button>
     </div>
     <div class="sectionHead" style="margin-top:20px"><h2>❤️ Sevimlilar</h2></div>
     <div id="favoritesGrid" class="catalog" style="padding:0"></div>
+  </div>
+</main>
+
+<main id="appstats" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="profile">‹</button><div class="pageTitle">APP STATISTIKA</div></div>
+  <div class="statsWrap">
+    <div id="statsGrid" class="statsGrid"><div class="empty">Statistika yuklanmoqda...</div></div>
+    <section class="statsSection">
+      <h3>🔥 TOP kinolar</h3>
+      <div id="topMoviesStats"><div class="payStatus">Yuklanmoqda...</div></div>
+    </section>
+    <button id="statsRefresh" class="statsRefresh">🔄 Yangilash</button>
+    <div class="payStatus">Hisob London vaqti bo‘yicha. App kirishlari 30 daqiqalik sessiya sifatida sanaladi.</div>
   </div>
 </main>
 
@@ -931,6 +984,7 @@ button{cursor:pointer}
     if(id==='profile') renderProfile();
     if(id==='search') renderSearch();
     if(id==='vip') renderVipAccess();
+    if(id==='appstats') loadAdminStats();
   }
 
   function setFilter(f){
@@ -1126,12 +1180,48 @@ button{cursor:pointer}
     if(!me.authenticated){
       cardEl.innerHTML='<div class="profileName">Telegram orqali kiring</div><div class="status">Profil va sevimlilar bot ichidan ochilganda ishlaydi.</div>';
       favEl.innerHTML='<div class="empty">Profil ma’lumoti mavjud emas.</div>';
+      var sb=document.getElementById('adminStatsBtn');if(sb)sb.style.display='none';
       return;
     }
     var u=me.user||{};
+    var statsBtn=document.getElementById('adminStatsBtn');
+    if(statsBtn)statsBtn.style.display=me.is_admin?'flex':'none';
     cardEl.innerHTML='<div class="profileName">'+esc((u.first_name||'')+' '+(u.last_name||''))+'</div><div class="status">'+(me.vip?'💎 VIP ACTIVE':'✨ STANDARD')+(me.continue?' · ▶ '+esc(me.continue.movie_title)+' '+me.continue.episode_number+'-qism':'')+'</div>';
     var fav=movies.filter(function(m){return (me.favorite_ids||[]).indexOf(m.id)>=0});
     favEl.innerHTML=fav.length?fav.map(card).join(''):'<div class="empty">Hozircha sevimli kinolar yo‘q.</div>';
+  }
+
+  function loadAdminStats(){
+    var grid=document.getElementById('statsGrid');
+    var top=document.getElementById('topMoviesStats');
+    if(!me.is_admin){
+      grid.innerHTML='<div class="empty">Ruxsat yo‘q.</div>';
+      top.innerHTML='';
+      return;
+    }
+    grid.innerHTML='<div class="empty">Statistika yuklanmoqda...</div>';
+    api('/app/api/admin/stats').then(function(s){
+      if(s._http){throw new Error('stats')}
+      grid.innerHTML=
+        '<div class="statCard"><div class="statValue">'+fmt(s.today_users)+'</div><div class="statLabel">Bugun kirgan odam</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.today_sessions)+'</div><div class="statLabel">Bugungi kirishlar</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.users_7d)+'</div><div class="statLabel">7 kunlik foydalanuvchi</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.users_30d)+'</div><div class="statLabel">30 kunlik foydalanuvchi</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.total_users)+'</div><div class="statLabel">Jami app foydalanuvchi</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.total_sessions)+'</div><div class="statLabel">Jami app kirishlari</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.today_viewers)+'</div><div class="statLabel">Bugun video ko‘rganlar</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.today_views)+'</div><div class="statLabel">Bugungi ko‘rishlar</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.total_viewers)+'</div><div class="statLabel">Jami tomoshabinlar</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.total_views)+'</div><div class="statLabel">Jami app ko‘rishlari</div></div>'+
+        '<div class="statCard"><div class="statValue">'+fmt(s.active_vips)+'</div><div class="statLabel">Faol VIP</div></div>';
+      var rows=(s.top_movies||[]).map(function(m,i){
+        return '<div class="topMovieRow"><span>'+(i+1)+'. '+esc(m.emoji||'🎬')+' '+esc(m.title)+'</span><span><b>'+fmt(m.views)+'</b> ko‘rish · '+fmt(m.viewers)+' odam</span></div>';
+      }).join('');
+      top.innerHTML=rows||'<div class="payStatus">Hozircha app ko‘rishlari yo‘q.</div>';
+    }).catch(function(){
+      grid.innerHTML='<div class="empty">Statistikani yuklab bo‘lmadi.</div>';
+      top.innerHTML='';
+    });
   }
 
   var paymentInfo=null;
@@ -1280,6 +1370,7 @@ button{cursor:pointer}
   document.getElementById('supportSend').addEventListener('click',sendSupport);
   document.getElementById('acceptTermsBtn').addEventListener('click',acceptPaymentTerms);
   document.getElementById('sendReceiptBtn').addEventListener('click',sendManualReceipt);
+  document.getElementById('statsRefresh').addEventListener('click',loadAdminStats);
   document.getElementById('continueBtn').addEventListener('click',function(){
     if(!me.continue){alert('Hali tomosha boshlangan kino yo‘q.');return}
     api('/app/api/movie/'+me.continue.movie_id).then(function(m){
