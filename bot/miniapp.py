@@ -422,20 +422,25 @@ button{cursor:pointer}
 .playerOverlay.active{display:block}
 .videoStage{position:absolute;inset:0;background:#000;display:flex;align-items:center;justify-content:center}
 .videoStage video{width:100%;height:100%;object-fit:contain;background:#000}
-.playerControls{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;background:linear-gradient(180deg,#000b 0%,transparent 32%,transparent 62%,#000d 100%);opacity:1;transition:opacity .22s ease}
+.playerControls{position:absolute;inset:0;background:linear-gradient(180deg,#000a 0%,transparent 28%,transparent 64%,#000d 100%);opacity:1;transition:opacity .2s ease}
 .playerControls.hiddenControls{opacity:0;pointer-events:none}
-.playerTop{display:flex;align-items:center;gap:11px;padding:calc(96px + env(safe-area-inset-top)) 16px 10px}
-.playerClose{width:40px;height:40px;border:0;border-radius:50%;background:#161616c9;color:#fff;font-size:22px}
-.playerHeading{min-width:0}.playerMovieTitle{font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.playerEpisodeTitle{font-size:11px;color:#c7c7c7;margin-top:2px}
-.playerCenter{display:flex;align-items:center;justify-content:center;gap:24px}
-.circleControl{width:58px;height:58px;border-radius:50%;border:0;background:#3a322dcc;color:#fff;font-size:25px;display:grid;place-items:center;backdrop-filter:blur(8px)}
-.circleControl.playMain{width:72px;height:72px;font-size:31px;background:#493c32e8}
-.skipControl{position:relative;font-size:14px;font-weight:900}.skipControl b{font-size:20px}
-.playerBottom{padding:10px 14px calc(16px + env(safe-area-inset-bottom))}
-.timeRow{display:flex;justify-content:space-between;font-size:11px;color:#e7e7e7;margin-bottom:3px}
-.progress{width:100%;accent-color:#e31f2b}
-.playerActions{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
-.playerActionBtn{border:0;background:#171717c9;color:#fff;border-radius:12px;padding:9px 12px;font-weight:850;font-size:12px}
+.playerTop{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:11px;padding:calc(96px + env(safe-area-inset-top)) 16px 10px}
+.playerClose{width:40px;height:40px;border:1px solid #ffffff22;border-radius:50%;background:#1119;color:#fff;font-size:22px;backdrop-filter:blur(14px);box-shadow:0 8px 26px #0007}
+.playerHeading{min-width:0;text-shadow:0 2px 12px #000}.playerMovieTitle{font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.playerEpisodeTitle{font-size:11px;color:#d7d7d7;margin-top:2px}
+.playerCenter{position:absolute;inset:0;pointer-events:none}
+.circleControl{border:1px solid #ffffff24;background:#10101099;color:#fff;display:grid;place-items:center;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 10px 30px #0008;transition:transform .14s ease,background .14s ease}
+.circleControl:active{transform:scale(.92);background:#252525cc}
+.circleControl.playMain{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:76px;height:76px;border-radius:50%;font-size:31px;background:#111b;pointer-events:auto}
+.circleControl.playMain:active{transform:translate(-50%,-50%) scale(.92)}
+.transportRow{position:absolute;left:50%;top:calc(50% + 102px);transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:18px;pointer-events:auto}
+.transportRow .circleControl{width:50px;height:50px;border-radius:18px;font-size:20px}
+.transportRow .skipControl{width:58px;height:50px;border-radius:18px;font-size:12px;font-weight:900;line-height:1}
+.skipControl b{font-size:18px}
+.playerBottom{position:absolute;left:0;right:0;bottom:0;padding:10px 16px calc(18px + env(safe-area-inset-bottom))}
+.timeRow{display:flex;justify-content:space-between;font-size:11px;color:#f0f0f0;margin-bottom:5px;text-shadow:0 1px 6px #000}
+.progress{width:100%;accent-color:#f21f2d}
+.playerActions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.playerActionBtn{border:1px solid #ffffff1f;background:#1119;color:#fff;border-radius:16px;padding:11px 14px;font-weight:850;font-size:12px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 8px 24px #0005}
 .playlistDrawer{position:absolute;left:0;right:0;bottom:0;z-index:3;max-height:58%;background:#0b0b0bf8;border-top:1px solid #3b3021;border-radius:20px 20px 0 0;transform:translateY(105%);transition:transform .25s ease;overflow:auto;padding:14px 14px calc(18px + env(safe-area-inset-bottom))}
 .playlistDrawer.open{transform:translateY(0)}
 .drawerHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.drawerHead h3{margin:0;color:#f4c75c}.drawerClose{border:0;background:#191919;color:#fff;width:34px;height:34px;border-radius:10px}
@@ -550,11 +555,13 @@ button{cursor:pointer}
         <div class="playerHeading"><div id="playerMovieTitle" class="playerMovieTitle">AIKINOUZ</div><div id="playerEpisodeTitle" class="playerEpisodeTitle">1-qism</div></div>
       </div>
       <div class="playerCenter">
-        <button id="prevEpisode" class="circleControl">|◀</button>
-        <button id="back10" class="circleControl skipControl">↶<b>10</b></button>
-        <button id="playPause" class="circleControl playMain">▶</button>
-        <button id="forward10" class="circleControl skipControl"><b>10</b>↷</button>
-        <button id="nextEpisode" class="circleControl">▶|</button>
+        <button id="playPause" class="circleControl playMain" aria-label="Play/Pause">▶</button>
+        <div class="transportRow">
+          <button id="prevEpisode" class="circleControl" aria-label="Oldingi qism">|◀</button>
+          <button id="back10" class="circleControl skipControl" aria-label="10 soniya orqaga">↶<b>10</b></button>
+          <button id="forward10" class="circleControl skipControl" aria-label="10 soniya oldinga"><b>10</b>↷</button>
+          <button id="nextEpisode" class="circleControl" aria-label="Keyingi qism">▶|</button>
+        </div>
       </div>
       <div class="playerBottom">
         <div class="timeRow"><span id="currentTime">0:00</span><span id="durationTime">0:00</span></div>
@@ -719,8 +726,10 @@ button{cursor:pointer}
   function showPlayerControls(autoHide){
     playerControls.classList.remove('hiddenControls');
     clearTimeout(playerHideTimer);
-    if(autoHide && !playerVideo.paused){
-      playerHideTimer=setTimeout(function(){playerControls.classList.add('hiddenControls')},3500);
+    if(autoHide){
+      playerHideTimer=setTimeout(function(){
+        if(!playlistDrawer.classList.contains('open')) playerControls.classList.add('hiddenControls');
+      },2000);
     }
   }
   function renderPlaylist(){
@@ -849,11 +858,11 @@ button{cursor:pointer}
   });
   document.getElementById('videoStage').addEventListener('click',function(e){
     if(e.target.closest('button')||e.target.closest('input')||e.target.closest('.playlistDrawer'))return;
-    if(playerControls.classList.contains('hiddenControls'))showPlayerControls(true);
-    else{playerControls.classList.add('hiddenControls');clearTimeout(playerHideTimer)}
+    togglePlay();
+    showPlayerControls(true);
   });
   playerVideo.addEventListener('play',function(){document.getElementById('playPause').textContent='❚❚';showPlayerControls(true)});
-  playerVideo.addEventListener('pause',function(){document.getElementById('playPause').textContent='▶';showPlayerControls(false)});
+  playerVideo.addEventListener('pause',function(){document.getElementById('playPause').textContent='▶';showPlayerControls(true)});
   playerVideo.addEventListener('loadedmetadata',function(){document.getElementById('durationTime').textContent=timeText(playerVideo.duration)});
   playerVideo.addEventListener('timeupdate',function(){
     document.getElementById('currentTime').textContent=timeText(playerVideo.currentTime);
