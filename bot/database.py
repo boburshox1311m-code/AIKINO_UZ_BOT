@@ -59,6 +59,19 @@ class Database:
             ALTER TABLE watch_progress ADD COLUMN IF NOT EXISTS position_seconds DOUBLE PRECISION NOT NULL DEFAULT 0;
             ALTER TABLE watch_progress ADD COLUMN IF NOT EXISTS duration_seconds DOUBLE PRECISION NOT NULL DEFAULT 0;
             CREATE INDEX IF NOT EXISTS watch_progress_updated_idx ON watch_progress(updated_at DESC);
+            CREATE TABLE IF NOT EXISTS movie_watch_progress (
+                user_id BIGINT NOT NULL,
+                movie_id BIGINT NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
+                episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+                current_time DOUBLE PRECISION NOT NULL DEFAULT 0,
+                duration DOUBLE PRECISION NOT NULL DEFAULT 0,
+                last_watched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY(user_id, movie_id)
+            );
+            CREATE INDEX IF NOT EXISTS movie_watch_progress_updated_idx
+                ON movie_watch_progress(last_watched_at DESC);
+            CREATE INDEX IF NOT EXISTS movie_watch_progress_movie_idx
+                ON movie_watch_progress(movie_id, last_watched_at DESC);
             CREATE TABLE IF NOT EXISTS favorite_movies (
                 user_id BIGINT NOT NULL,
                 movie_id BIGINT NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
@@ -258,18 +271,47 @@ class Database:
             LIMIT $1
         """, limit)
 
-    async def miniapp_movies(self, limit: int = 100):
+    async def miniapp_movies(self, offset: int = 0, limit: int = 36):
         assert self.pool
         return await self.pool.fetch("""
             SELECT m.*, COUNT(v.id) AS view_count,
-                   COUNT(DISTINCT e.id) FILTER (WHERE e.file_id IS NOT NULL) AS episode_count
+                   COUNT(DISTINCT e.id) FILTER (
+                       WHERE e.file_id IS NOT NULL
+                         AND (
+                           m.is_vip=FALSE
+                           OR (e.storage_status='ready' AND e.r2_key IS NOT NULL)
+                         )
+                   ) AS episode_count
             FROM movies m
             LEFT JOIN episodes e ON e.movie_id=m.id
             LEFT JOIN episode_views v ON v.episode_id=e.id
+            WHERE m.is_vip=FALSE
+               OR EXISTS (
+                   SELECT 1 FROM episodes ready_ep
+                   WHERE ready_ep.movie_id=m.id
+                     AND ready_ep.file_id IS NOT NULL
+                     AND ready_ep.storage_status='ready'
+                     AND ready_ep.r2_key IS NOT NULL
+               )
             GROUP BY m.id
             ORDER BY m.created_at DESC, m.id DESC
-            LIMIT $1
-        """, limit)
+            OFFSET $1 LIMIT $2
+        """, max(0, offset), max(1, min(limit, 50)))
+
+    async def miniapp_movie_count(self):
+        assert self.pool
+        return int(await self.pool.fetchval("""
+            SELECT COUNT(*)
+            FROM movies m
+            WHERE m.is_vip=FALSE
+               OR EXISTS (
+                   SELECT 1 FROM episodes ready_ep
+                   WHERE ready_ep.movie_id=m.id
+                     AND ready_ep.file_id IS NOT NULL
+                     AND ready_ep.storage_status='ready'
+                     AND ready_ep.r2_key IS NOT NULL
+               )
+        """) or 0)
 
     async def movie_with_stats(self, movie_id: int):
         assert self.pool
@@ -370,6 +412,25 @@ class Database:
             SELECT * FROM episodes WHERE movie_id=$1 AND file_id IS NOT NULL
             ORDER BY episode_number OFFSET $2 LIMIT $3
         """, movie_id, offset, limit)
+
+    async def miniapp_episodes(self, movie_id: int, is_vip: bool, offset: int = 0, limit: int = 200):
+        assert self.pool
+        if is_vip:
+            return await self.pool.fetch("""
+                SELECT * FROM episodes
+                WHERE movie_id=$1
+                  AND file_id IS NOT NULL
+                  AND storage_status='ready'
+                  AND r2_key IS NOT NULL
+                ORDER BY episode_number
+                OFFSET $2 LIMIT $3
+            """, movie_id, max(0, offset), max(1, min(limit, 200)))
+        return await self.pool.fetch("""
+            SELECT * FROM episodes
+            WHERE movie_id=$1 AND file_id IS NOT NULL
+            ORDER BY episode_number
+            OFFSET $2 LIMIT $3
+        """, movie_id, max(0, offset), max(1, min(limit, 200)))
 
     async def all_episodes_admin(self, movie_id: int, offset=0, limit=12):
         assert self.pool
@@ -554,6 +615,22 @@ class Database:
         duration = max(0.0, float(duration_seconds or 0))
         if duration > 0:
             position = min(position, duration)
+        movie_id = await self.pool.fetchval(
+            "SELECT movie_id FROM episodes WHERE id=$1",
+            episode_id,
+        )
+        if movie_id:
+            await self.pool.execute("""
+                INSERT INTO movie_watch_progress(
+                    user_id, movie_id, episode_id, current_time, duration, last_watched_at
+                )
+                VALUES($1,$2,$3,$4,$5,NOW())
+                ON CONFLICT(user_id, movie_id) DO UPDATE SET
+                    episode_id=EXCLUDED.episode_id,
+                    current_time=EXCLUDED.current_time,
+                    duration=EXCLUDED.duration,
+                    last_watched_at=NOW()
+            """, user_id, movie_id, episode_id, position, duration)
         return await self.pool.execute("""
             INSERT INTO watch_progress(
                 user_id, episode_id, position_seconds, duration_seconds, updated_at
@@ -600,6 +677,35 @@ class Database:
             JOIN movies m ON m.id=e.movie_id
             WHERE w.user_id=$1 AND e.file_id IS NOT NULL
         """, user_id)
+
+    async def movie_watch_progress(self, user_id: int, movie_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT * FROM movie_watch_progress
+            WHERE user_id=$1 AND movie_id=$2
+        """, user_id, movie_id)
+
+    async def vip_movie_watch_stats(self, movie_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT
+                (SELECT COUNT(*)
+                 FROM app_watch_events a
+                 JOIN episodes e ON e.id=a.episode_id
+                 WHERE e.movie_id=$1) AS views,
+                (SELECT COUNT(DISTINCT a.user_id)
+                 FROM app_watch_events a
+                 JOIN episodes e ON e.id=a.episode_id
+                 WHERE e.movie_id=$1) AS unique_viewers,
+                (SELECT COALESCE(AVG(p.current_time),0)
+                 FROM movie_watch_progress p
+                 WHERE p.movie_id=$1) AS average_watch_time,
+                (SELECT COUNT(*)
+                 FROM movie_watch_progress p
+                 WHERE p.movie_id=$1
+                   AND p.duration>0
+                   AND p.current_time/p.duration>=0.90) AS completed_views
+        """, movie_id)
 
     async def is_movie_favorite(self, user_id: int, movie_id: int) -> bool:
         assert self.pool
