@@ -917,10 +917,11 @@ async def toggle_favorite_movie(call: CallbackQuery, db: Database, admin_id: int
         return await call.answer("Kino topilmadi.", show_alert=True)
     if movie["is_vip"] and call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
         return await call.answer("Bu kino uchun faol VIP huquqi kerak.", show_alert=True)
+    lang = await db.user_language(call.from_user.id)
     added = await db.toggle_movie_favorite(call.from_user.id, int(movie_id))
-    kb, _ = await episode_keyboard(db, int(movie_id), int(page), call.from_user.id)
+    kb, _ = await episode_keyboard(db, int(movie_id), int(page), call.from_user.id, lang)
     await call.message.edit_reply_markup(reply_markup=kb)
-    await call.answer("❤️ Kino sevimlilarga qo‘shildi." if added else "Kino sevimlilardan olib tashlandi.")
+    await call.answer("❤️" if added else "💔")
 
 
 @router.callback_query(F.data.startswith("fave:"))
@@ -931,23 +932,26 @@ async def toggle_favorite_episode(call: CallbackQuery, db: Database, admin_id: i
         return await call.answer("Qism topilmadi.", show_alert=True)
     if ep["movie_is_vip"] and call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
         return await call.answer("Bu qism uchun faol VIP huquqi kerak.", show_alert=True)
+    lang = await db.user_language(call.from_user.id)
     added = await db.toggle_episode_favorite(call.from_user.id, episode_id)
-    await call.message.edit_reply_markup(reply_markup=await episode_markup(db, ep, call.from_user.id))
-    await call.answer("❤️ Qism sevimlilarga qo‘shildi." if added else "Qism sevimlilardan olib tashlandi.")
+    await call.message.edit_reply_markup(reply_markup=await episode_markup(db, ep, call.from_user.id, lang))
+    await call.answer("❤️" if added else "💔")
 
 
 @router.callback_query(F.data == "favorites")
-async def favorites(call: CallbackQuery):
+async def favorites(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎬 Sevimli kinolar", callback_data="favorites:movies")],
-        [InlineKeyboardButton(text="🎞 Sevimli qismlar", callback_data="favorites:episodes")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+        [InlineKeyboardButton(text=bt(lang, "fav_movies"), callback_data="favorites:movies")],
+        [InlineKeyboardButton(text=bt(lang, "fav_episodes"), callback_data="favorites:episodes")],
+        [InlineKeyboardButton(text=bt(lang, "home"), callback_data="home")],
     ])
-    await safe_edit(call, "❤️ <b>SEVIMLILAR</b>\n\nSaqlangan kontentingiz:", kb)
+    await safe_edit(call, bt(lang, "favorites_title"), kb)
 
 
 @router.callback_query(F.data == "favorites:movies")
 async def favorite_movies(call: CallbackQuery, db: Database, admin_id: int):
+    lang = await db.user_language(call.from_user.id)
     items = await db.favorite_movies(call.from_user.id)
     if call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
         items = [movie for movie in items if not movie["is_vip"]]
@@ -955,83 +959,85 @@ async def favorite_movies(call: CallbackQuery, db: Database, admin_id: int):
     for movie in items:
         b.button(text=f"❤️ 🎬 {movie['title']}", callback_data=f"movie:{movie['id']}")
     b.adjust(1)
-    b.row(InlineKeyboardButton(text="⬅️ Sevimlilar", callback_data="favorites"))
-    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
-    text = "🎬 <b>Sevimli kinolar</b>\n\nKinoni tanlang:" if items else "Hozircha sevimli kinolaringiz yo‘q."
-    await safe_edit(call, text, b.as_markup())
+    b.row(InlineKeyboardButton(text=bt(lang, "favorites"), callback_data="favorites"))
+    b.row(InlineKeyboardButton(text=bt(lang, "home"), callback_data="home"))
+    await safe_edit(call, bt(lang, "fav_movies_text") if items else bt(lang, "fav_movies_empty"), b.as_markup())
 
 
 @router.callback_query(F.data == "favorites:episodes")
 async def favorite_episodes(call: CallbackQuery, db: Database, admin_id: int):
+    lang = await db.user_language(call.from_user.id)
     items = await db.favorite_episodes(call.from_user.id)
     if call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
         items = [episode for episode in items if not episode["movie_is_vip"]]
     b = InlineKeyboardBuilder()
     for ep in items:
         b.button(
-            text=f"{ep['movie_emoji']} {ep['movie_title']} — {ep['episode_number']}-QISM",
+            text=f"{ep['movie_emoji']} {ep['movie_title']} — {bt(lang, 'episode', n=ep['episode_number'])}",
             callback_data=f"ep:{ep['id']}",
         )
     b.adjust(1)
-    b.row(InlineKeyboardButton(text="⬅️ Sevimlilar", callback_data="favorites"))
-    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
-    text = "🎞 <b>Sevimli qismlar</b>\n\nQismni tanlang:" if items else "Hozircha sevimli qismlaringiz yo‘q."
-    await safe_edit(call, text, b.as_markup())
+    b.row(InlineKeyboardButton(text=bt(lang, "favorites"), callback_data="favorites"))
+    b.row(InlineKeyboardButton(text=bt(lang, "home"), callback_data="home"))
+    await safe_edit(call, bt(lang, "fav_eps_text") if items else bt(lang, "fav_eps_empty"), b.as_markup())
 
 
 @router.callback_query(F.data == "continue")
 async def continue_watching(call: CallbackQuery, db: Database, admin_id: int):
+    lang = await db.user_language(call.from_user.id)
     ep = await db.watch_progress(call.from_user.id)
     if not ep:
-        return await call.answer("Hali hech qaysi qismni tomosha qilmagansiz.", show_alert=True)
+        return await call.answer(bt(lang, "continue_empty"), show_alert=True)
     if ep["movie_is_vip"] and call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
         await send_episode_message(call.message, db, ep["id"], call.from_user.id, admin_id)
-        return await call.answer("Faol VIP huquqi kerak.", show_alert=True)
+        return await call.answer(bt(lang, "vip_required"), show_alert=True)
     await send_episode_message(call.message, db, ep["id"], call.from_user.id, admin_id)
-    await call.answer(f"{ep['movie_title']} — {ep['episode_number']}-QISM ochildi")
+    await call.answer(bt(lang, "opened", title=ep["movie_title"], n=ep["episode_number"]))
 
 
 @router.callback_query(F.data == "latest")
 async def latest(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
     eps = await db.latest_episodes()
     b = InlineKeyboardBuilder()
     for e in eps:
-        b.button(text=f"{e['movie_emoji']} {e['movie_title']} — {e['episode_number']}-QISM", callback_data=f"ep:{e['id']}")
+        b.button(text=f"{e['movie_emoji']} {e['movie_title']} — {bt(lang, 'episode', n=e['episode_number'])}", callback_data=f"ep:{e['id']}")
     b.adjust(1)
-    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
-    await safe_edit(call, "🔥 <b>YANGI QISMLAR</b>\n\n🎞 Eng so‘nggi qo‘shilgan qismlar:", b.as_markup())
+    b.row(InlineKeyboardButton(text=bt(lang, "home"), callback_data="home"))
+    await safe_edit(call, bt(lang, "latest_title"), b.as_markup())
 
 
 @router.callback_query(F.data == "search")
-async def search_prompt(call: CallbackQuery, state: FSMContext):
+async def search_prompt(call: CallbackQuery, state: FSMContext, db: Database):
+    lang = await db.user_language(call.from_user.id)
     await state.set_state(SearchFlow.query)
-    await safe_edit(call, "🔎 <b>AIKINOUZ QIDIRUV</b>\n\nKino yoki serial nomini yozing:", cancel_kb())
+    await safe_edit(call, bt(lang, "search_title"), InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=bt(lang, "back"), callback_data="home")]]))
 
 
 @router.message(SearchFlow.query, F.text)
 async def search_result(message: Message, state: FSMContext, db: Database):
     await state.clear()
+    lang = await db.user_language(message.from_user.id)
     items = await db.search_movies(message.text)
     b = InlineKeyboardBuilder()
     for m in items:
         b.button(text=f"🎬 {m['title']}", callback_data=f"movie:{m['id']}")
     b.adjust(1)
     b.row(
-        InlineKeyboardButton(text="🔎 Yana qidirish", callback_data="search"),
-        InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"),
+        InlineKeyboardButton(text=bt(lang, "search_again"), callback_data="search"),
+        InlineKeyboardButton(text=bt(lang, "home"), callback_data="home"),
     )
-    text = "🔎 <b>QIDIRUV NATIJALARI</b>\n\nTopilgan kinolar:" if items else "🔎 <b>QIDIRUV</b>\n\nBu nomdagi kino topilmadi."
-    await message.answer(text, reply_markup=b.as_markup())
+    await message.answer(bt(lang, "search_results") if items else bt(lang, "search_empty"), reply_markup=b.as_markup())
 
 
 @router.callback_query(F.data == "requestmovie")
-async def request_movie_prompt(call: CallbackQuery, state: FSMContext):
+async def request_movie_prompt(call: CallbackQuery, state: FSMContext, db: Database):
+    lang = await db.user_language(call.from_user.id)
     await state.set_state(MovieRequestFlow.title)
     await safe_edit(
         call,
-        "🎬 <b>Kino so‘rash</b>\n\n"
-        "Botga qo‘shilishini xohlagan kino yoki serial nomini yozing:",
-        cancel_kb(),
+        bt(lang, "request_title"),
+        InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=bt(lang, "back"), callback_data="home")]]),
     )
 
 
@@ -1043,32 +1049,32 @@ async def request_movie_save(
     bot: Bot,
     admin_id: int,
 ):
+    lang = await db.user_language(message.from_user.id)
     title = message.text.strip()
     if len(title) < 2:
-        return await message.answer("Kino nomini to‘liqroq yozing:", reply_markup=cancel_kb())
+        return await message.answer(bt(lang, "request_short"), reply_markup=main_menu(False, lang))
     if len(title) > 120:
         return await message.answer(
-            "Kino nomi juda uzun. 120 ta belgidan qisqaroq yozing:",
-            reply_markup=cancel_kb(),
+            bt(lang, "request_long"),
+            reply_markup=main_menu(False, lang),
         )
 
     result, request = await db.create_movie_request(message.from_user.id, title)
     await state.clear()
     if result == "cooldown":
         return await message.answer(
-            "⏳ So‘rovlar orasida 1 daqiqa kuting.",
-            reply_markup=main_menu(),
+            bt(lang, "request_wait"),
+            reply_markup=main_menu(False, lang),
         )
     if result == "duplicate":
         return await message.answer(
-            f"ℹ️ <b>{escape(title)}</b> uchun so‘rovingiz allaqachon ro‘yxatda.",
-            reply_markup=main_menu(),
+            bt(lang, "request_duplicate", title=escape(title)),
+            reply_markup=main_menu(False, lang),
         )
 
     await message.answer(
-        f"✅ <b>{escape(title)}</b> uchun so‘rovingiz qabul qilindi.\n\n"
-        "Kino botga joylanganda sizga xabar beramiz.",
-        reply_markup=main_menu(),
+        bt(lang, "request_ok", title=escape(title)),
+        reply_markup=main_menu(False, lang),
     )
     username = f"@{message.from_user.username}" if message.from_user.username else "username yo‘q"
     user_name = escape(message.from_user.full_name)
