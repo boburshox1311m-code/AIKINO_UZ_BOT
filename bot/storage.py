@@ -9,6 +9,7 @@ from pathlib import Path
 import boto3
 from aiogram import Bot
 from botocore.config import Config
+from boto3.s3.transfer import TransferConfig
 
 from .database import Database
 
@@ -25,6 +26,7 @@ class R2Storage:
             self.account_id and self.access_key and self.secret_key and self.bucket
         )
         self.client = None
+        self.transfer_config = None
         if self.enabled:
             self.client = boto3.client(
                 "s3",
@@ -34,10 +36,18 @@ class R2Storage:
                 region_name="auto",
                 config=Config(
                     signature_version="s3v4",
-                    retries={"max_attempts": 4, "mode": "standard"},
-                    connect_timeout=15,
-                    read_timeout=120,
+                    retries={"max_attempts": 8, "mode": "adaptive"},
+                    connect_timeout=30,
+                    read_timeout=300,
+                    max_pool_connections=12,
                 ),
+            )
+            self.transfer_config = TransferConfig(
+                multipart_threshold=64 * 1024 * 1024,
+                multipart_chunksize=64 * 1024 * 1024,
+                max_concurrency=4,
+                num_download_attempts=8,
+                use_threads=True,
             )
 
     def object_key(self, movie_id: int, episode_id: int, episode_number: int) -> str:
@@ -63,6 +73,7 @@ class R2Storage:
                 "ContentType": content_type or "video/mp4",
                 "CacheControl": "private, max-age=0, no-store",
             },
+            Config=self.transfer_config,
         )
 
     def presigned_get(self, key: str, expires: int = 7200) -> str:
@@ -85,6 +96,7 @@ async def storage_worker(
     bot: Bot,
     storage: R2Storage,
     stop_event: asyncio.Event,
+    admin_id: int | None = None,
 ) -> None:
     if not storage.enabled:
         log.info("R2 storage worker disabled: credentials are not configured")
@@ -114,16 +126,17 @@ async def storage_worker(
                         raise RuntimeError("Telegram file_path bo‘sh")
                     path = Path(local_path)
                     if not path.exists():
-                        # In Local Bot API mode getFile returns a local absolute path.
-                        # If a relative path is returned, Bot.download_file can materialize it.
-                        downloaded = await bot.download_file(local_path, destination=None, timeout=600)
-                        if downloaded is None:
-                            raise RuntimeError("Telegram faylini yuklab bo‘lmadi")
+                        # Never buffer multi-GB movies in RAM. Download straight to an ephemeral file.
                         temp_dir = Path("/tmp/aikinouz-storage")
                         temp_dir.mkdir(parents=True, exist_ok=True)
                         temp_path = temp_dir / f"episode-{episode_id}.mp4"
-                        downloaded.seek(0)
-                        temp_path.write_bytes(downloaded.read())
+                        await bot.download_file(
+                            local_path,
+                            destination=str(temp_path),
+                            timeout=3600,
+                        )
+                        if not temp_path.exists() or temp_path.stat().st_size <= 0:
+                            raise RuntimeError("Telegram faylini yuklab bo‘lmadi")
                         path = temp_path
                     mime = ep["mime_type"] or mimetypes.guess_type(str(path))[0] or "video/mp4"
                     key = storage.object_key(
@@ -140,7 +153,22 @@ async def storage_worker(
                         mime,
                     )
                     log.info("Episode %s archived to R2: %s", episode_id, key)
-                    if str(path).startswith("/tmp/aikinouz-storage/"):
+                    ep_after = await db.episode(episode_id)
+                    if admin_id and ep_after and ep_after["movie_is_vip"]:
+                        try:
+                            size_gb = size / (1024 ** 3)
+                            await bot.send_message(
+                                admin_id,
+                                "✅ <b>VIP kino Cloudflare R2 ga to‘liq yuklandi.</b>\n\n"
+                                f"🎬 <b>{ep_after['movie_title']}</b>\n"
+                                f"🎞 {ep_after['episode_number']}-QISM\n"
+                                f"💾 {size_gb:.2f} GB\n\n"
+                                "Mini App VIP bo‘limida endi tomosha qilish uchun aktiv.",
+                            )
+                        except Exception:
+                            log.exception("VIP R2 ready admin notification failed: episode_id=%s", episode_id)
+                    # Temporary Railway files are removed after R2 confirms the object.
+                    if str(path).startswith("/tmp/"):
                         try:
                             path.unlink(missing_ok=True)
                         except OSError:
