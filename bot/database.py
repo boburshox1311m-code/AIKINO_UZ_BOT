@@ -150,7 +150,7 @@ class Database:
                 ('manual_card_holder', ''),
                 ('vip_price_uzs', '50000'),
                 ('vip_days', '30'),
-                ('manual_vip_plans', '')
+                ('manual_vip_plans', '10:15000,29:25000,30:40000,180:200000,365:400000')
             ON CONFLICT (key) DO NOTHING;
             CREATE TABLE IF NOT EXISTS manual_payment_requests (
                 id BIGSERIAL PRIMARY KEY,
@@ -984,10 +984,13 @@ class Database:
                 plans = []
         if plans:
             return sorted(set(plans))
-        return [(
-            int(await self.get_setting("vip_days", "30")),
-            int(await self.get_setting("vip_price_uzs", "50000")),
-        )]
+        return [
+            (10, 15000),
+            (29, 25000),
+            (30, 40000),
+            (180, 200000),
+            (365, 400000),
+        ]
 
     async def set_manual_vip_plans(self, plans: list[tuple[int, int]]):
         value = ",".join(f"{days}:{price}" for days, price in sorted(set(plans)))
