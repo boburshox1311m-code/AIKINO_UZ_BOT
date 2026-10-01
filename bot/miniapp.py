@@ -991,7 +991,16 @@ button{cursor:pointer}
       noVipMovies:'VIP kinolar hozircha qo‘shilmagan.',noMovies:'Kino topilmadi.',episodes:'qism',views:'ko‘rish',
       watchNow:'▶ Tomosha',choosePlan:'VIP paketini tanlang:',cardOwner:'Karta egasi:',receiptInstruction:'Tanlangan paket summasini kartaga o‘tkazing, so‘ng chek rasmini yuboring.',
       days:'kun',months6:'6 oy',year1:'1 yil',auto:'Avtomatik',termsAccept:'✅ Shartlarga roziman',
-      stats:'📊 APP STATISTIKA',languageTitle:'Til / Язык / Language'
+      stats:'📊 APP STATISTIKA',languageTitle:'Til / Язык / Language',
+      termsText:'To‘lovni bosish orqali VIP xizmatidan foydalanish shartlariga rozilik bildirasiz. Stars to‘lovlari Telegram orqali amalga oshiriladi; 30 kunlik paket avtomatik yangilanadi va bot orqali bekor qilinishi mumkin.',
+      loadingPlans:'Paketlar yuklanmoqda...',loadingCard:'Karta ma’lumoti yuklanmoqda...',telegramOnly:'VIP to‘lov Telegram Mini App ichida ishlaydi.',telegramLogin:'Telegram orqali kiring.',
+      starsOff:'Stars to‘lovi hozircha o‘chiq.',manualOff:'Karta orqali to‘lov hozircha o‘chiq.',noPlans:'Stars paketlari mavjud emas.',
+      paymentPreparing:'⏳ To‘lov oynasi tayyorlanmoqda...',termsFirst:'Avval to‘lov shartlariga rozilik bering.',paymentOpenFail:'To‘lov oynasi ochilmadi.',
+      paymentPaid:'✅ To‘lov qabul qilindi. VIP faollashtirilmoqda...',paymentCancelled:'To‘lov bekor qilindi.',paymentFailed:'To‘lov amalga oshmadi.',
+      chooseReceipt:'Avval chek rasmini tanlang.',chooseVipPlan:'Avval VIP paketini tanlang.',receiptTooLarge:'Chek rasmi 8 MB dan kichik bo‘lsin.',
+      receiptSending:'Chek adminga yuborilmoqda...',receiptSent:'✅ Chek adminga yuborildi. Tasdiqlangach VIP avtomatik faollashadi.',
+      pendingReceipt:'⏳ Oldingi chekingiz hali admin tomonidan tekshirilmoqda.',receiptFail:'Chek yuborilmadi. Rasmni tekshirib qayta urinib ko‘ring.',
+      messageShort:'Xabarni biroz to‘liqroq yozing.',messageSending:'Xabar yuborilmoqda...',messageSent:'✅ Xabaringiz adminga yuborildi.',messageFail:'Xabar yuborilmadi. Qayta urinib ko‘ring.'
     },
     ru:{
       home:'Главная',catalog:'Фильмы',search:'Поиск',vip:'VIP',profile:'Профиль',
@@ -1009,7 +1018,16 @@ button{cursor:pointer}
       noVipMovies:'VIP-фильмов пока нет.',noMovies:'Фильм не найден.',episodes:'серий',views:'просмотров',
       watchNow:'▶ Смотреть',choosePlan:'Выберите VIP-пакет:',cardOwner:'Владелец карты:',receiptInstruction:'Переведите сумму выбранного пакета на карту, затем отправьте фото чека.',
       days:'дней',months6:'6 месяцев',year1:'1 год',auto:'Автопродление',termsAccept:'✅ Я согласен с условиями',
-      stats:'📊 СТАТИСТИКА APP',languageTitle:'Язык'
+      stats:'📊 СТАТИСТИКА APP',languageTitle:'Язык',
+      termsText:'Нажимая оплату, вы соглашаетесь с условиями VIP-сервиса. Оплата Stars проходит через Telegram; 30-дневный пакет продлевается автоматически и может быть отменён через бот.',
+      loadingPlans:'Пакеты загружаются...',loadingCard:'Данные карты загружаются...',telegramOnly:'VIP-оплата работает внутри Telegram Mini App.',telegramLogin:'Откройте через Telegram.',
+      starsOff:'Оплата Stars временно отключена.',manualOff:'Оплата картой временно отключена.',noPlans:'Пакеты Stars недоступны.',
+      paymentPreparing:'⏳ Подготавливаем окно оплаты...',termsFirst:'Сначала примите условия оплаты.',paymentOpenFail:'Не удалось открыть оплату.',
+      paymentPaid:'✅ Оплата принята. VIP активируется...',paymentCancelled:'Оплата отменена.',paymentFailed:'Оплата не прошла.',
+      chooseReceipt:'Сначала выберите фото чека.',chooseVipPlan:'Сначала выберите VIP-пакет.',receiptTooLarge:'Фото чека должно быть меньше 8 МБ.',
+      receiptSending:'Чек отправляется администратору...',receiptSent:'✅ Чек отправлен. После подтверждения VIP активируется автоматически.',
+      pendingReceipt:'⏳ Предыдущий чек ещё проверяется администратором.',receiptFail:'Не удалось отправить чек. Проверьте изображение и попробуйте снова.',
+      messageShort:'Напишите сообщение подробнее.',messageSending:'Сообщение отправляется...',messageSent:'✅ Сообщение отправлено администратору.',messageFail:'Не удалось отправить сообщение. Попробуйте ещё раз.'
     },
     en:{
       home:'Home',catalog:'Movies',search:'Search',vip:'VIP',profile:'Profile',
@@ -1027,7 +1045,16 @@ button{cursor:pointer}
       noVipMovies:'No VIP movies yet.',noMovies:'Movie not found.',episodes:'episodes',views:'views',
       watchNow:'▶ Watch',choosePlan:'Choose a VIP plan:',cardOwner:'Card holder:',receiptInstruction:'Transfer the selected plan amount to the card, then upload the receipt.',
       days:'days',months6:'6 months',year1:'1 year',auto:'Auto-renew',termsAccept:'✅ I agree to the terms',
-      stats:'📊 APP STATISTICS',languageTitle:'Language'
+      stats:'📊 APP STATISTICS',languageTitle:'Language',
+      termsText:'By proceeding with payment, you agree to the VIP service terms. Stars payments are processed by Telegram; the 30-day plan renews automatically and can be cancelled through the bot.',
+      loadingPlans:'Loading plans...',loadingCard:'Loading card details...',telegramOnly:'VIP payment works inside Telegram Mini App.',telegramLogin:'Open through Telegram.',
+      starsOff:'Stars payments are currently disabled.',manualOff:'Card payments are currently disabled.',noPlans:'No Stars plans are available.',
+      paymentPreparing:'⏳ Preparing payment window...',termsFirst:'Please accept the payment terms first.',paymentOpenFail:'Could not open payment.',
+      paymentPaid:'✅ Payment received. Activating VIP...',paymentCancelled:'Payment cancelled.',paymentFailed:'Payment failed.',
+      chooseReceipt:'Choose a receipt image first.',chooseVipPlan:'Choose a VIP plan first.',receiptTooLarge:'Receipt image must be under 8 MB.',
+      receiptSending:'Sending receipt to admin...',receiptSent:'✅ Receipt sent. VIP will activate automatically after approval.',
+      pendingReceipt:'⏳ Your previous receipt is still under review.',receiptFail:'Could not send the receipt. Check the image and try again.',
+      messageShort:'Please write a little more detail.',messageSending:'Sending message...',messageSent:'✅ Your message was sent to the admin.',messageFail:'Could not send the message. Try again.'
     }
   };
   function tr(k){return (I18N[appLang]&&I18N[appLang][k])||I18N.uz[k]||k}
@@ -1096,6 +1123,8 @@ button{cursor:pointer}
     document.getElementById('sendReceiptBtn').textContent=tr('sendReceipt');
     document.getElementById('receiptStatus').textContent=tr('receiptHint');
     document.getElementById('acceptTermsBtn').textContent=tr('termsAccept');
+    var termsBox=document.getElementById('starsTerms');
+    if(termsBox)termsBox.innerHTML=tr('termsText')+'<button id="acceptTermsBtn" class="payPrimary">'+tr('termsAccept')+'</button>';
 
     var st=document.querySelector('#support .pageTitle');if(st)st.textContent=tr('supportTitle');
     document.getElementById('supportSend').textContent=tr('supportSend');
@@ -1394,8 +1423,8 @@ button{cursor:pointer}
     var plans=document.getElementById('starPlans');
     var manual=document.getElementById('manualPaymentBox');
     if(!initData){
-      plans.innerHTML='<div class="payStatus">VIP to‘lov Telegram Mini App ichida ishlaydi.</div>';
-      manual.innerHTML='<div class="payStatus">Telegram orqali kiring.</div>';
+      plans.innerHTML='<div class="payStatus">'+tr('telegramOnly')+'</div>';
+      manual.innerHTML='<div class="payStatus">'+tr('telegramLogin')+'</div>';
       document.getElementById('sendReceiptBtn').disabled=true;
       return;
     }
@@ -1406,11 +1435,11 @@ button{cursor:pointer}
         terms.style.display=info.stars.terms_accepted?'none':'block';
         plans.innerHTML=(info.stars.plans||[]).map(function(p){
           return '<button class="starPlan" data-star-days="'+p.days+'" '+(info.stars.terms_accepted?'':'disabled')+'><span>💎 '+p.days+' kun'+(p.recurring?' · Avtomatik':'')+'</span><span>⭐ '+p.stars+'</span></button>';
-        }).join('')||'<div class="payStatus">Stars paketlari mavjud emas.</div>';
+        }).join('')||'<div class="payStatus">'+tr('noPlans')+'</div>';
         document.getElementById('starsStatus').textContent=info.stars.subscription_active?'🔄 Faol avtomatik Stars obunangiz mavjud.':'';
       }else{
         document.getElementById('starsTerms').style.display='none';
-        plans.innerHTML='<div class="payStatus">Stars to‘lovi hozircha o‘chiq.</div>';
+        plans.innerHTML='<div class="payStatus">'+tr('starsOff')+'</div>';
       }
       if(info.manual&&info.manual.enabled){
         var plans=(info.manual.plans||[]);
@@ -1428,7 +1457,7 @@ button{cursor:pointer}
         document.getElementById('receiptInput').style.display='block';
         document.getElementById('sendReceiptBtn').style.display='block';
       }else{
-        manual.innerHTML='<div class="payStatus">Karta orqali to‘lov hozircha o‘chiq.</div>';
+        manual.innerHTML='<div class="payStatus">'+tr('manualOff')+'</div>';
         document.getElementById('receiptInput').style.display='none';
         document.getElementById('sendReceiptBtn').style.display='none';
       }
@@ -1448,19 +1477,19 @@ button{cursor:pointer}
 
   function openStarsInvoice(days){
     var st=document.getElementById('starsStatus');
-    st.textContent='⏳ To‘lov oynasi tayyorlanmoqda...';
+    st.textContent=tr('paymentPreparing');
     api('/app/api/stars-invoice/'+days,{method:'POST'}).then(function(r){
-      if(r.error==='terms_required'){st.textContent='Avval to‘lov shartlariga rozilik bering.';loadPayments();return}
-      if(!r.invoice_url){st.textContent='To‘lov oynasi ochilmadi.';return}
+      if(r.error==='terms_required'){st.textContent=tr('termsFirst');loadPayments();return}
+      if(!r.invoice_url){st.textContent=tr('paymentOpenFail');return}
       if(tg&&typeof tg.openInvoice==='function'){
         tg.openInvoice(r.invoice_url,function(status){
           if(status==='paid'){
-            st.textContent='✅ To‘lov qabul qilindi. VIP faollashtirilmoqda...';
+            st.textContent=tr('paymentPaid');
             setTimeout(function(){
               api('/app/api/me').then(function(v){me=v;renderProfile();renderVipAccess();});
             },1200);
-          }else if(status==='cancelled'){st.textContent='To‘lov bekor qilindi.'}
-          else if(status==='failed'){st.textContent='To‘lov amalga oshmadi.'}
+          }else if(status==='cancelled'){st.textContent=tr('paymentCancelled')}
+          else if(status==='failed'){st.textContent=tr('paymentFailed')}
         });
       }else{
         window.location.href=r.invoice_url;
@@ -1472,21 +1501,21 @@ button{cursor:pointer}
     var input=document.getElementById('receiptInput');
     var status=document.getElementById('receiptStatus');
     var btn=document.getElementById('sendReceiptBtn');
-    if(!input.files||!input.files[0]){status.textContent='Avval chek rasmini tanlang.';return}
+    if(!input.files||!input.files[0]){status.textContent=tr('chooseReceipt');return}
     var file=input.files[0];
-    if(file.size>8*1024*1024){status.textContent='Chek rasmi 8 MB dan kichik bo‘lsin.';return}
-    if(!selectedManualDays){status.textContent='Avval VIP paketini tanlang.';return}
+    if(file.size>8*1024*1024){status.textContent=tr('receiptTooLarge');return}
+    if(!selectedManualDays){status.textContent=tr('chooseVipPlan');return}
     var form=new FormData();
     form.append('vip_days',String(selectedManualDays));
     form.append('receipt',file,file.name);
-    btn.disabled=true;btn.textContent='⏳ YUBORILMOQDA...';status.textContent='Chek adminga yuborilmoqda...';
+    btn.disabled=true;btn.textContent='⏳ YUBORILMOQDA...';status.textContent=tr('receiptSending');
     fetch('/app/api/manual-receipt',{method:'POST',headers:{'X-Telegram-Init-Data':initData},body:form})
       .then(function(r){return r.json().then(function(j){j._http=r.status;return j})})
       .then(function(r){
-        if(r.ok){input.value='';status.textContent='✅ Chek adminga yuborildi. Tasdiqlangach VIP avtomatik faollashadi.'}
-        else if(r.error==='pending_exists'){status.textContent='⏳ Oldingi chekingiz hali admin tomonidan tekshirilmoqda.'}
-        else if(r.error==='manual_disabled'){status.textContent='Karta orqali to‘lov vaqtincha o‘chiq.'}
-        else status.textContent='Chek yuborilmadi. Rasmni tekshirib qayta urinib ko‘ring.';
+        if(r.ok){input.value='';status.textContent=tr('receiptSent')}
+        else if(r.error==='pending_exists'){status.textContent=tr('pendingReceipt')}
+        else if(r.error==='manual_disabled'){status.textContent=tr('manualOff')}
+        else status.textContent=tr('receiptFail');
       }).catch(function(){status.textContent='Chek yuborilmadi. Internetni tekshiring.'})
       .finally(function(){btn.disabled=false;btn.textContent='📤 Chek rasmini yuborish'});
   }
@@ -1495,11 +1524,11 @@ button{cursor:pointer}
     var box=document.getElementById('supportMessage'), btn=document.getElementById('supportSend'), st=document.getElementById('supportStatus');
     var message=(box.value||'').trim();
     if(!initData){st.textContent='Support Telegram ichida ishlaydi.';return}
-    if(message.length<3){st.textContent='Xabarni biroz to‘liqroq yozing.';return}
-    btn.disabled=true;btn.textContent='⏳ YUBORILMOQDA...';st.textContent='Xabar yuborilmoqda...';
+    if(message.length<3){st.textContent=tr('messageShort');return}
+    btn.disabled=true;btn.textContent='⏳ YUBORILMOQDA...';st.textContent=tr('messageSending');
     api('/app/api/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:message})}).then(function(r){
-      if(r.ok){box.value='';st.textContent='✅ Xabaringiz adminga yuborildi.'} else st.textContent='Xabar yuborilmadi. Qayta urinib ko‘ring.';
-    }).catch(function(){st.textContent='Xabar yuborilmadi. Internetni tekshiring.'}).finally(function(){btn.disabled=false;btn.textContent='📨 XABARNI YUBORISH'});
+      if(r.ok){box.value='';st.textContent=tr('messageSent')} else st.textContent=tr('messageFail');
+    }).catch(function(){st.textContent=tr('messageFail')}).finally(function(){btn.disabled=false;btn.textContent='📨 XABARNI YUBORISH'});
   }
 
   document.getElementById('langBtn').addEventListener('click',function(){show('language')});
@@ -1508,6 +1537,8 @@ button{cursor:pointer}
   });
 
   document.addEventListener('click',function(e){
+    var termsAccept=e.target.closest('#acceptTermsBtn');
+    if(termsAccept){acceptPaymentTerms();return}
     var open=e.target.closest('[data-open]');
     if(open){var target=open.getAttribute('data-open');var f=open.getAttribute('data-filter');if(f)setFilter(f);show(target);if(target==='payments')loadPayments();return}
     var star=e.target.closest('[data-star-days]');
@@ -1532,7 +1563,6 @@ button{cursor:pointer}
   document.getElementById('heroCatalog').addEventListener('click',function(){show('catalog')});
   document.getElementById('closeApp').addEventListener('click',function(){try{if(tg)tg.close();else history.back()}catch(e){history.back()}});
   document.getElementById('supportSend').addEventListener('click',sendSupport);
-  document.getElementById('acceptTermsBtn').addEventListener('click',acceptPaymentTerms);
   document.getElementById('sendReceiptBtn').addEventListener('click',sendManualReceipt);
   document.getElementById('statsRefresh').addEventListener('click',loadAdminStats);
   document.getElementById('continueBtn').addEventListener('click',function(){
