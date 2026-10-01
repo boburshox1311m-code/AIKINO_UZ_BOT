@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import os
 
@@ -36,10 +37,13 @@ async def main() -> None:
     )
     default_props = DefaultBotProperties(parse_mode=ParseMode.HTML)
     if local_api:
-        if await db.get_setting("local_bot_api_logged_out", "false") != "true":
+        token_fingerprint = hashlib.sha256(token.encode()).hexdigest()[:16]
+        previous_fingerprint = await db.get_setting("local_bot_api_token_fingerprint", "")
+        if previous_fingerprint != token_fingerprint:
             cloud_bot = Bot(token=token, default=default_props)
             try:
                 await cloud_bot.log_out()
+                await db.set_setting("local_bot_api_token_fingerprint", token_fingerprint)
                 await db.set_setting("local_bot_api_logged_out", "true")
             finally:
                 await cloud_bot.session.close()
