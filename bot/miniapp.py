@@ -775,14 +775,13 @@ button{cursor:pointer}
 .videoStage.inlineStage .playerTop{padding:10px 10px 8px}
 .videoStage.inlineStage .playerClose{width:34px;height:34px;font-size:19px}
 .videoStage.inlineStage .playerMovieTitle{font-size:13px}.videoStage.inlineStage .playerEpisodeTitle{font-size:9px}
-.videoStage.inlineStage .circleControl.playMain{width:58px;height:58px;font-size:25px}
-.videoStage.inlineStage .transportRow{top:50%;gap:82px}
-.videoStage.inlineStage #prevEpisode,.videoStage.inlineStage #nextEpisode{display:none}
-.videoStage.inlineStage .transportRow .skipControl{width:46px;height:42px;border-radius:14px}
-.videoStage.inlineStage .playerBottom{padding:6px 10px 8px}
-.videoStage.inlineStage .playerActions{margin-top:5px;gap:6px}
-.videoStage.inlineStage .playerActionBtn{padding:7px 9px;border-radius:11px;font-size:10px}
-.videoStage.inlineStage .volumeRange{width:72px}
+.videoStage.inlineStage .centerCluster{gap:16px}
+.videoStage.inlineStage .circleControl.playMain{width:62px;height:62px;font-size:27px}
+.videoStage.inlineStage .circleControl.nextMain{width:42px;height:42px;font-size:16px}
+.videoStage.inlineStage .playerBottom{padding:0 8px 2px}
+.videoStage.inlineStage .compactTime{font-size:10px}
+.videoStage.inlineStage .playerActionBtn{width:30px;height:30px;font-size:14px}
+.videoStage.inlineStage .skipFeedback.left{left:8%}.videoStage.inlineStage .skipFeedback.right{right:8%}
 .videoStage.inlineStage .playlistDrawer{max-height:74%}
 .recommendBlock{padding:4px 14px 28px}.recommendHead{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px}.recommendHead h2{margin:0;font-size:19px;color:#f5ca62}.recommendGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .recommendGrid .card{width:auto;min-width:0}
@@ -799,20 +798,31 @@ button{cursor:pointer}
 .playerClose{width:40px;height:40px;border:1px solid #ffffff22;border-radius:50%;background:#1119;color:#fff;font-size:22px;backdrop-filter:blur(14px);box-shadow:0 8px 26px #0007}
 .playerHeading{min-width:0;text-shadow:0 2px 12px #000}.playerMovieTitle{font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.playerEpisodeTitle{font-size:11px;color:#d7d7d7;margin-top:2px}
 .playerCenter{position:absolute;inset:0;pointer-events:none}
-.circleControl{border:1px solid #ffffff24;background:#10101099;color:#fff;display:grid;place-items:center;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 10px 30px #0008;transition:transform .14s ease,background .14s ease}
-.circleControl:active{transform:scale(.92);background:#252525cc}
-.circleControl.playMain{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:76px;height:76px;border-radius:50%;font-size:31px;background:#111b;pointer-events:auto}
-.circleControl.playMain:active{transform:translate(-50%,-50%) scale(.92)}
-.transportRow{position:absolute;left:50%;top:calc(50% + 102px);transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:18px;pointer-events:auto}
-.transportRow .circleControl{width:50px;height:50px;border-radius:18px;font-size:20px}
-.transportRow .skipControl{width:58px;height:50px;border-radius:18px;font-size:12px;font-weight:900;line-height:1}
-.skipControl b{font-size:18px}
-.playerBottom{position:absolute;left:0;right:0;bottom:0;padding:10px 16px calc(18px + env(safe-area-inset-bottom))}
-.timeRow{display:flex;justify-content:space-between;font-size:11px;color:#f0f0f0;margin-bottom:5px;text-shadow:0 1px 6px #000}
-.progress{width:100%;accent-color:#f21f2d}
-.playerActions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
-.playerActionBtn{border:1px solid #ffffff1f;background:#1119;color:#fff;border-radius:16px;padding:11px 14px;font-weight:850;font-size:12px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 8px 24px #0005}
-.volumeWrap{display:flex;align-items:center;gap:8px}.volumeRange{width:92px;accent-color:#f4c75c}
+.centerCluster{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:24px;pointer-events:auto}
+.circleControl{border:0;background:#1010108f;color:#fff;display:grid;place-items:center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 26px #0007;transition:transform .12s ease,background .12s ease,opacity .15s ease}
+.circleControl:active{transform:scale(.92);background:#202020b8}
+.circleControl.playMain{width:82px;height:82px;border-radius:50%;font-size:34px;background:#111a}
+.circleControl.nextMain{width:52px;height:52px;border-radius:50%;font-size:20px;background:#1118}
+.circleControl.nextMain:disabled{opacity:.28;pointer-events:none}
+.hiddenPlayerControl{display:none!important}
+.skipFeedback{position:absolute;top:50%;transform:translateY(-50%) scale(.88);min-width:74px;padding:13px 15px;border-radius:999px;background:#101010a8;color:#fff;font-size:18px;font-weight:950;text-align:center;opacity:0;pointer-events:none;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:opacity .12s ease,transform .12s ease}
+.skipFeedback.left{left:11%}.skipFeedback.right{right:11%}
+.skipFeedback.show{opacity:1;transform:translateY(-50%) scale(1)}
+.playerBottom{position:absolute;left:0;right:0;bottom:0;padding:0 10px calc(4px + env(safe-area-inset-bottom));pointer-events:auto;background:linear-gradient(180deg,transparent,#000a)}
+.playerUtilityRow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 3px}
+.compactTime{display:flex;align-items:center;gap:4px;font-size:11px;color:#fff;text-shadow:0 1px 6px #000;white-space:nowrap}
+.timeSep{opacity:.65}
+.progress{display:block;width:100%;height:16px;margin:0;accent-color:#ff1f35;cursor:pointer;background:transparent}
+.progress::-webkit-slider-runnable-track{height:3px;background:linear-gradient(to right,#ff1f35 0,#ff1f35 var(--progress-pct,0%),#ffffff73 var(--progress-pct,0%),#ffffff73 100%);border-radius:999px}
+.progress::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#ff1f35;margin-top:-4.5px;box-shadow:0 0 0 2px #fff0}
+.progress::-moz-range-track{height:3px;background:#ffffff73;border-radius:999px}.progress::-moz-range-progress{height:3px;background:#ff1f35;border-radius:999px}.progress::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:#ff1f35}
+.playerActions{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin:0}
+.playerActionBtn{border:0;background:#1117;color:#fff;border-radius:50%;width:34px;height:34px;padding:0;display:grid;place-items:center;font-weight:900;font-size:16px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:none}
+.playerActionBtn:active{transform:scale(.91);background:#222a}
+.playerActionBtn.iconOnly{font-size:17px}
+.playerActionBtn.fullscreenIcon{font-size:20px}
+.hiddenVolume{display:none}
+.volumeWrap{display:flex;align-items:center;gap:6px}.volumeRange{width:92px;accent-color:#f4c75c}
 .loadMore{display:block;margin:12px auto 28px;border:1px solid #5c451f;background:#151007;color:#f4c75c;border-radius:14px;padding:12px 18px;font-weight:900}
 .vipStatsRow{display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px 0;border-bottom:1px solid #24201a}.vipStatsRow:last-child{border-bottom:0}.vipStatsMeta{font-size:11px;color:#aaa;line-height:1.5;text-align:right}
 .playlistDrawer{position:absolute;left:0;right:0;bottom:0;z-index:3;max-height:58%;background:#0b0b0bf8;border-top:1px solid #3b3021;border-radius:20px 20px 0 0;transform:translateY(105%);transition:transform .25s ease;overflow:auto;padding:14px 14px calc(18px + env(safe-area-inset-bottom))}
@@ -820,11 +830,6 @@ button{cursor:pointer}
 .drawerHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.drawerHead h3{margin:0;color:#f4c75c}.drawerClose{border:0;background:#191919;color:#fff;width:34px;height:34px;border-radius:10px}
 .playlistItems{display:grid;gap:8px}.playlistItem{display:flex;justify-content:space-between;align-items:center;border:1px solid #29251d;background:#111;color:#fff;border-radius:13px;padding:12px;text-align:left}.playlistItem.active{border-color:#b77a1d;background:#1c160d;color:#f5ca61}
 .playerError{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:30px;color:#fff;background:#050505}.playerError.show{display:grid}
-@media (max-width:520px){
-  .playerActions{gap:8px;flex-wrap:wrap}
-  .volumeWrap{order:3;width:100%;justify-content:center}
-  .volumeRange{width:min(52vw,220px)}
-}
 @media (orientation:landscape){
   .playerTop{padding-top:calc(54px + env(safe-area-inset-top))}
   .playerBottom{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
@@ -1009,25 +1014,27 @@ button{cursor:pointer}
         <div class="playerHeading"><div id="playerMovieTitle" class="playerMovieTitle">AIKINOUZ</div><div id="playerEpisodeTitle" class="playerEpisodeTitle">1-qism</div></div>
       </div>
       <div class="playerCenter">
-        <button id="playPause" class="circleControl playMain" aria-label="Play/Pause">▶</button>
-        <div class="transportRow">
-          <button id="prevEpisode" class="circleControl" aria-label="Oldingi qism">|◀</button>
-          <button id="back10" class="circleControl skipControl" aria-label="10 soniya orqaga">↶<b>10</b></button>
-          <button id="forward10" class="circleControl skipControl" aria-label="10 soniya oldinga"><b>10</b>↷</button>
-          <button id="nextEpisode" class="circleControl" aria-label="Keyingi qism">▶|</button>
+        <div id="skipFeedbackLeft" class="skipFeedback left">↶ 10</div>
+        <div id="skipFeedbackRight" class="skipFeedback right">10 ↷</div>
+        <div class="centerCluster">
+          <button id="playPause" class="circleControl playMain" aria-label="Play/Pause">▶</button>
+          <button id="nextEpisode" class="circleControl nextMain" aria-label="Keyingi qism">▶|</button>
         </div>
+        <button id="prevEpisode" class="hiddenPlayerControl" aria-hidden="true" tabindex="-1"></button>
+        <button id="back10" class="hiddenPlayerControl" aria-hidden="true" tabindex="-1"></button>
+        <button id="forward10" class="hiddenPlayerControl" aria-hidden="true" tabindex="-1"></button>
       </div>
       <div class="playerBottom">
-        <div class="timeRow"><span id="currentTime">0:00</span><span id="durationTime">0:00</span></div>
-        <input id="progressBar" class="progress" type="range" min="0" max="1000" value="0">
-        <div class="playerActions">
-          <button id="playlistToggle" class="playerActionBtn">☰ Qismlar</button>
-          <div class="volumeWrap">
-            <button id="muteToggle" class="playerActionBtn">🔊</button>
-            <input id="volumeRange" class="volumeRange" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+        <div class="playerUtilityRow">
+          <div class="compactTime"><span id="currentTime">0:00</span><span class="timeSep">/</span><span id="durationTime">0:00</span></div>
+          <div class="playerActions">
+            <button id="playlistToggle" class="playerActionBtn iconOnly" aria-label="Qismlar">☰</button>
+            <button id="muteToggle" class="playerActionBtn iconOnly" aria-label="Ovoz">🔊</button>
+            <input id="volumeRange" class="volumeRange hiddenVolume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+            <button id="playerFullscreen" class="playerActionBtn iconOnly fullscreenIcon" aria-label="To‘liq ekran">⛶</button>
           </div>
-          <button id="playerFullscreen" class="playerActionBtn">⛶ To‘liq ekran</button>
         </div>
+        <input id="progressBar" class="progress" type="range" min="0" max="1000" value="0" aria-label="Video progress">
       </div>
     </div>
     <div id="playlistDrawer" class="playlistDrawer">
