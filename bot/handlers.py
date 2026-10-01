@@ -22,6 +22,7 @@ from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton, Inlin
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import Database
+from .storage import R2Storage
 
 router = Router()
 PAGE_MOVIES = 8
@@ -191,6 +192,19 @@ def main_menu(is_admin=False):
     if is_admin:
         rows.append([InlineKeyboardButton(text="🔐 ADMIN PANEL", callback_data="admin")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def delete_r2_safely(storage: R2Storage, key: str | None, context: str) -> None:
+    if not key:
+        return
+    try:
+        await storage.delete_object(key)
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "R2 cleanup failed: context=%s error_type=%s",
+            context,
+            type(exc).__name__,
+        )
 
 
 def cancel_kb():
@@ -2456,15 +2470,24 @@ async def replace_video_prompt(call: CallbackQuery, state: FSMContext):
 
 
 @router.message(AdminFlow.replace_video, F.video)
-async def replace_video_save(message: Message, state: FSMContext, db: Database, admin_id: int):
+async def replace_video_save(
+    message: Message,
+    state: FSMContext,
+    db: Database,
+    admin_id: int,
+    storage: R2Storage,
+):
     if not is_admin(message.from_user.id, admin_id): return
     data = await state.get_data()
+    old_episode = await db.episode(data["episode_id"])
+    old_r2_key = old_episode["r2_key"] if old_episode and "r2_key" in old_episode.keys() else None
     await db.set_episode_video(data["episode_id"], message.video.file_id, message.video.file_unique_id)
     await db.mark_episode_storage_pending(
         data["episode_id"],
         message.video.mime_type,
         message.video.file_size,
     )
+    await delete_r2_safely(storage, old_r2_key, f"replace_episode:{data['episode_id']}")
     await record_admin_action(db, message.from_user, "📹 Qism videosi almashtirildi", f"Qism ID: {data['episode_id']}")
     await state.clear()
     await message.answer("✅ Video saqlandi/almashtirildi.", reply_markup=admin_menu())
@@ -2498,10 +2521,14 @@ async def confirm_delete_movie(call: CallbackQuery, db: Database):
 
 
 @router.callback_query(F.data.startswith("adm:dodelmovie:"))
-async def do_delete_movie(call: CallbackQuery, db: Database):
+async def do_delete_movie(call: CallbackQuery, db: Database, storage: R2Storage):
     movie_id = int(call.data.rsplit(":", 1)[1])
     movie = await db.movie(movie_id)
+    episodes = await db.all_episodes_admin(movie_id, 0, 1000)
     await db.delete_movie(movie_id)
+    for episode in episodes:
+        key = episode["r2_key"] if "r2_key" in episode.keys() else None
+        await delete_r2_safely(storage, key, f"delete_movie:{movie_id}")
     await record_admin_action(db, call.from_user, "🗑 Kino o‘chirildi", movie["title"] if movie else f"Kino ID: {movie_id}")
     await safe_edit(call, "✅ Kino va qismlari o‘chirildi.", admin_menu())
 
@@ -2529,10 +2556,12 @@ async def confirm_delete_ep(call: CallbackQuery, db: Database):
 
 
 @router.callback_query(F.data.startswith("adm:dodeleteepisode:"))
-async def do_delete_ep(call: CallbackQuery, db: Database):
+async def do_delete_ep(call: CallbackQuery, db: Database, storage: R2Storage):
     episode_id = int(call.data.rsplit(":", 1)[1])
     episode = await db.episode(episode_id)
+    r2_key = episode["r2_key"] if episode and "r2_key" in episode.keys() else None
     await db.delete_episode(episode_id)
+    await delete_r2_safely(storage, r2_key, f"delete_episode:{episode_id}")
     details = f"{episode['movie_title']} — {episode['episode_number']}-QISM" if episode else f"Qism ID: {episode_id}"
     await record_admin_action(db, call.from_user, "🗑 Qism o‘chirildi", details)
     await safe_edit(call, "✅ Qism o‘chirildi.", admin_menu())
@@ -2552,11 +2581,12 @@ def redact_error_message(value: str) -> str:
 @router.error()
 async def global_error_handler(event: ErrorEvent, bot: Bot, admin_id: int):
     error = event.exception
-    logging.getLogger(__name__).exception(
-        "Unhandled bot update error",
-        exc_info=(type(error), error, error.__traceback__),
-    )
     raw_message = redact_error_message(str(error) or "Tafsilot mavjud emas")
+    logging.getLogger(__name__).error(
+        "Unhandled bot update error: type=%s message=%s",
+        type(error).__name__,
+        raw_message,
+    )
     signature = f"{type(error).__name__}:{raw_message}"
     now = time.monotonic()
     if now - _last_error_alerts.get(signature, 0) < ERROR_ALERT_COOLDOWN:
