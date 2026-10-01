@@ -788,11 +788,19 @@ button{cursor:pointer}
 .progress{width:100%;accent-color:#f21f2d}
 .playerActions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
 .playerActionBtn{border:1px solid #ffffff1f;background:#1119;color:#fff;border-radius:16px;padding:11px 14px;font-weight:850;font-size:12px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 8px 24px #0005}
+.volumeWrap{display:flex;align-items:center;gap:8px}.volumeRange{width:92px;accent-color:#f4c75c}
+.loadMore{display:block;margin:12px auto 28px;border:1px solid #5c451f;background:#151007;color:#f4c75c;border-radius:14px;padding:12px 18px;font-weight:900}
+.vipStatsRow{display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px 0;border-bottom:1px solid #24201a}.vipStatsRow:last-child{border-bottom:0}.vipStatsMeta{font-size:11px;color:#aaa;line-height:1.5;text-align:right}
 .playlistDrawer{position:absolute;left:0;right:0;bottom:0;z-index:3;max-height:58%;background:#0b0b0bf8;border-top:1px solid #3b3021;border-radius:20px 20px 0 0;transform:translateY(105%);transition:transform .25s ease;overflow:auto;padding:14px 14px calc(18px + env(safe-area-inset-bottom))}
 .playlistDrawer.open{transform:translateY(0)}
 .drawerHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.drawerHead h3{margin:0;color:#f4c75c}.drawerClose{border:0;background:#191919;color:#fff;width:34px;height:34px;border-radius:10px}
 .playlistItems{display:grid;gap:8px}.playlistItem{display:flex;justify-content:space-between;align-items:center;border:1px solid #29251d;background:#111;color:#fff;border-radius:13px;padding:12px;text-align:left}.playlistItem.active{border-color:#b77a1d;background:#1c160d;color:#f5ca61}
 .playerError{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:30px;color:#fff;background:#050505}.playerError.show{display:grid}
+@media (max-width:520px){
+  .playerActions{gap:8px;flex-wrap:wrap}
+  .volumeWrap{order:3;width:100%;justify-content:center}
+  .volumeRange{width:min(52vw,220px)}
+}
 @media (orientation:landscape){
   .playerTop{padding-top:calc(54px + env(safe-area-inset-top))}
   .playerBottom{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
@@ -858,6 +866,7 @@ button{cursor:pointer}
   </div>
   <div class="searchBox"><input id="searchInput" placeholder="Kino yoki serial qidiring..."></div>
   <div id="catalogGrid" class="catalog"></div>
+  <button id="loadMoreCatalog" class="loadMore" style="display:none">Yana yuklash</button>
 </main>
 
 <main id="detail" class="page">
@@ -909,6 +918,10 @@ button{cursor:pointer}
     <section class="statsSection">
       <h3>🔥 TOP kinolar</h3>
       <div id="topMoviesStats"><div class="payStatus">Yuklanmoqda...</div></div>
+    </section>
+    <section class="statsSection">
+      <h3>💎 VIP kino statistikasi</h3>
+      <div id="vipMoviesStats"><div class="payStatus">Yuklanmoqda...</div></div>
     </section>
     <button id="statsRefresh" class="statsRefresh">🔄 Yangilash</button>
     <div class="payStatus">Hisob London vaqti bo‘yicha. App kirishlari 30 daqiqalik sessiya sifatida sanaladi.</div>
@@ -978,6 +991,10 @@ button{cursor:pointer}
         <input id="progressBar" class="progress" type="range" min="0" max="1000" value="0">
         <div class="playerActions">
           <button id="playlistToggle" class="playerActionBtn">☰ Qismlar</button>
+          <div class="volumeWrap">
+            <button id="muteToggle" class="playerActionBtn">🔊</button>
+            <input id="volumeRange" class="volumeRange" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+          </div>
           <button id="playerFullscreen" class="playerActionBtn">⛶ To‘liq ekran</button>
         </div>
       </div>
