@@ -52,8 +52,12 @@ class Database:
             CREATE TABLE IF NOT EXISTS watch_progress (
                 user_id BIGINT PRIMARY KEY,
                 episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+                position_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
+                duration_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
+            ALTER TABLE watch_progress ADD COLUMN IF NOT EXISTS position_seconds DOUBLE PRECISION NOT NULL DEFAULT 0;
+            ALTER TABLE watch_progress ADD COLUMN IF NOT EXISTS duration_seconds DOUBLE PRECISION NOT NULL DEFAULT 0;
             CREATE INDEX IF NOT EXISTS watch_progress_updated_idx ON watch_progress(updated_at DESC);
             CREATE TABLE IF NOT EXISTS favorite_movies (
                 user_id BIGINT NOT NULL,
@@ -427,6 +431,20 @@ class Database:
             WHERE id=$1
         """, episode_id, error)
 
+    async def reset_stuck_storage_jobs(self) -> int:
+        assert self.pool
+        rows = await self.pool.fetch("""
+            UPDATE episodes
+            SET storage_status='pending',
+                storage_error=NULL,
+                storage_attempts=0
+            WHERE r2_key IS NULL
+              AND file_id IS NOT NULL
+              AND storage_attempts >= 8
+            RETURNING id
+        """)
+        return len(rows)
+
     async def adjacent_episode(self, movie_id: int, number: int, direction: str):
         assert self.pool
         if direction == "prev":
@@ -486,15 +504,29 @@ class Database:
             "UPDATE movies SET is_vip=$2 WHERE id=$1 RETURNING *", movie_id, is_vip
         )
 
-    async def save_watch_progress(self, user_id: int, episode_id: int):
+    async def save_watch_progress(
+        self,
+        user_id: int,
+        episode_id: int,
+        position_seconds: float = 0,
+        duration_seconds: float = 0,
+    ):
         assert self.pool
+        position = max(0.0, float(position_seconds or 0))
+        duration = max(0.0, float(duration_seconds or 0))
+        if duration > 0:
+            position = min(position, duration)
         return await self.pool.execute("""
-            INSERT INTO watch_progress(user_id, episode_id, updated_at)
-            VALUES($1, $2, NOW())
+            INSERT INTO watch_progress(
+                user_id, episode_id, position_seconds, duration_seconds, updated_at
+            )
+            VALUES($1, $2, $3, $4, NOW())
             ON CONFLICT(user_id) DO UPDATE SET
                 episode_id=EXCLUDED.episode_id,
+                position_seconds=EXCLUDED.position_seconds,
+                duration_seconds=EXCLUDED.duration_seconds,
                 updated_at=NOW()
-        """, user_id, episode_id)
+        """, user_id, episode_id, position, duration)
 
     async def record_episode_view(self, user_id: int, episode_id: int):
         assert self.pool
@@ -504,11 +536,27 @@ class Database:
             episode_id,
         )
 
+    async def record_episode_view_once(self, user_id: int, episode_id: int):
+        assert self.pool
+        return await self.pool.execute("""
+            INSERT INTO episode_views(user_id, episode_id)
+            SELECT $1, $2
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM episode_views
+                WHERE user_id=$1
+                  AND episode_id=$2
+                  AND viewed_at > NOW() - INTERVAL '6 hours'
+            )
+        """, user_id, episode_id)
+
     async def watch_progress(self, user_id: int):
         assert self.pool
         return await self.pool.fetchrow("""
             SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji,
-                   m.is_vip AS movie_is_vip
+                   m.is_vip AS movie_is_vip,
+                   w.position_seconds AS position_seconds,
+                   w.duration_seconds AS duration_seconds
             FROM watch_progress w
             JOIN episodes e ON e.id=w.episode_id
             JOIN movies m ON m.id=e.movie_id
