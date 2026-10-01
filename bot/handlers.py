@@ -152,6 +152,8 @@ def build_welcome(first_name: str, vip_active: bool = False) -> str:
         f"{vip_line}\n\n"
         "🎬 Kinolar • 🔥 Trend • 🆕 Yangiliklar\n"
         "❤️ Sevimlilar • ▶️ Davom ettirish • 💎 VIP\n\n"
+        "🏢 <b>AIKINOUZ</b> • President: <b>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</b>\n"
+        "📧 boburshox1311m@gmail.com\n\n"
         "<i>Tomosha qilish uchun bo‘limni tanlang:</i>"
     )
 
@@ -633,12 +635,13 @@ async def home(call: CallbackQuery, state: FSMContext, admin_id: int, db: Databa
 ABOUT_TEXT = (
     "👑 <b>AIKINOUZ</b>\n"
     "<b>PREMIUM KINO PLATFORMASI</b>\n\n"
-    "🏢 <b>Kompaniya:</b> AIKINOUZ\n"
-    "👑 <b>Kompaniya prezidenti:</b> BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI\n"
-    "📧 <b>Email:</b> boburshox1311m@gmail.com\n"
-    "🧩 <b>Project:</b> AIKINOUZ / AIKINO_UZ_BOT\n\n"
+    "🏢 <b>Brend / loyiha:</b> AIKINOUZ\n"
+    "👑 <b>President:</b> BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI\n"
+    "📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com\n"
+    "🧩 <b>Platforma:</b> AIKINOUZ / AIKINO_UZ_BOT\n"
+    "📌 <b>Status:</b> rasmiy ro‘yxatdan o‘tish rejalashtirilgan\n\n"
     "© 2026 AIKINOUZ. All rights reserved.\n"
-    "<i>Project owner / author attribution: BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI.</i>"
+    "<i>Project owner / author: BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI.</i>"
 )
 
 
