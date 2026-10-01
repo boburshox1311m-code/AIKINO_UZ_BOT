@@ -765,6 +765,30 @@ button{cursor:pointer}
 .supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:64px;height:64px;border-radius:18px;border:1px solid #7b5b24}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
 .empty{padding:28px 14px;color:#888;text-align:center}
 
+.inlinePlayerWrap{display:none;position:sticky;top:72px;z-index:25;background:#000;border-bottom:1px solid #2f2618;box-shadow:0 18px 38px #000b}
+.inlinePlayerWrap.active{display:block}
+.inlinePlayerMount{width:100%;background:#000}
+.inlinePlayerMeta{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;background:linear-gradient(180deg,#0d0d0d,#080808);border-top:1px solid #ffffff0d}
+.inlinePlayerMetaText{min-width:0}.inlinePlayerMetaTitle{font-size:13px;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.inlinePlayerMetaSub{font-size:10px;color:#9f9f9f;margin-top:2px}
+.inlinePlayerBadge{flex:none;border:1px solid #6f5121;color:#f4c75c;background:#1a140a;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:900}
+.videoStage.inlineStage{position:relative;inset:auto;width:100%;aspect-ratio:16/9;max-height:62vh;min-height:190px;background:#000}
+.videoStage.inlineStage .playerTop{padding:10px 10px 8px}
+.videoStage.inlineStage .playerClose{width:34px;height:34px;font-size:19px}
+.videoStage.inlineStage .playerMovieTitle{font-size:13px}.videoStage.inlineStage .playerEpisodeTitle{font-size:9px}
+.videoStage.inlineStage .circleControl.playMain{width:58px;height:58px;font-size:25px}
+.videoStage.inlineStage .transportRow{top:50%;gap:82px}
+.videoStage.inlineStage #prevEpisode,.videoStage.inlineStage #nextEpisode{display:none}
+.videoStage.inlineStage .transportRow .skipControl{width:46px;height:42px;border-radius:14px}
+.videoStage.inlineStage .playerBottom{padding:6px 10px 8px}
+.videoStage.inlineStage .playerActions{margin-top:5px;gap:6px}
+.videoStage.inlineStage .playerActionBtn{padding:7px 9px;border-radius:11px;font-size:10px}
+.videoStage.inlineStage .volumeRange{width:72px}
+.videoStage.inlineStage .playlistDrawer{max-height:74%}
+.recommendBlock{padding:4px 14px 28px}.recommendHead{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px}.recommendHead h2{margin:0;font-size:19px;color:#f5ca62}.recommendGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.recommendGrid .card{width:auto;min-width:0}
+@media (orientation:landscape){
+  .videoStage.inlineStage{aspect-ratio:16/9;max-height:78vh}
+}
 .playerOverlay{position:fixed;inset:0;z-index:1000;background:#000;display:none;overflow:hidden}
 .playerOverlay.active{display:block}
 .videoStage{position:absolute;inset:0;background:#000;display:flex;align-items:center;justify-content:center}
@@ -871,6 +895,13 @@ button{cursor:pointer}
 
 <main id="detail" class="page">
   <div class="pageTop"><button class="backBtn" data-open="catalog">‹</button><div class="pageTitle">Kino sahifasi</div></div>
+  <div id="inlinePlayerWrap" class="inlinePlayerWrap">
+    <div id="inlinePlayerMount" class="inlinePlayerMount"></div>
+    <div class="inlinePlayerMeta">
+      <div class="inlinePlayerMetaText"><div id="inlinePlayerMetaTitle" class="inlinePlayerMetaTitle">AIKINOUZ</div><div id="inlinePlayerMetaSub" class="inlinePlayerMetaSub">Premium player</div></div>
+      <div class="inlinePlayerBadge">AIKINOUZ PLAYER</div>
+    </div>
+  </div>
   <div id="detailContent"></div>
 </main>
 
@@ -1225,6 +1256,7 @@ button{cursor:pointer}
   }
 
   function show(id){
+    if(id!=='detail' && playerIsInline && inlinePlayerWrap.classList.contains('active')) closePlayer();
     document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active')});
     var el=document.getElementById(id); if(el) el.classList.add('active');
     document.querySelectorAll('.navBtn').forEach(function(x){x.classList.toggle('active',x.getAttribute('data-nav')===id)});
@@ -1331,9 +1363,14 @@ button{cursor:pointer}
         '<div class="desc">'+esc(m.description||'AIKINOUZ premium kino kolleksiyasi.')+'</div>'+
         '<div class="detailActions"><button id="watchFirst" class="goldBtn">▶ Tomosha qilish</button><button id="favMovie" class="darkBtn">'+(fav?'♥ Sevimlida':'♡ Sevimlilar')+'</button></div>'+
         '<div class="tabs"><button class="tab active">Qismlar</button><button class="tab">Tavsif</button></div>'+
-        '<div class="episodes">'+(eps||'<div class="empty">Qismlar hozircha yo‘q.</div>')+'</div></div>';
+        '<div class="episodes">'+(eps||'<div class="empty">Qismlar hozircha yo‘q.</div>')+'</div></div>'+
+        '<section class="recommendBlock"><div class="recommendHead"><h2>'+(appLang==='ru'?'Рекомендуем':appLang==='en'?'Recommended for you':'Sizga tavsiya')+'</h2></div>'+
+        '<div id="recommendGrid" class="recommendGrid"></div></section>';
 
       currentMovieData=m;
+      var recs=movies.filter(function(x){return x.id!==m.id && (!x.is_vip || me.vip || me.is_admin)}).slice(0,8);
+      var recGrid=document.getElementById('recommendGrid');
+      if(recGrid)recGrid.innerHTML=recs.length?recs.map(card).join(''):'<div class="empty">'+tr('noMovies')+'</div>';
       var first=(m.episodes||[])[0];
       var w=document.getElementById('watchFirst'); if(w) w.onclick=function(){if(first) openPlayer(m,0)};
       var fv=document.getElementById('favMovie'); if(fv) fv.onclick=function(){toggleFavorite(m.id)};
@@ -1346,6 +1383,11 @@ button{cursor:pointer}
   var playerControls=document.getElementById('playerControls');
   var playlistDrawer=document.getElementById('playlistDrawer');
   var playerError=document.getElementById('playerError');
+  var videoStage=document.getElementById('videoStage');
+  var inlinePlayerWrap=document.getElementById('inlinePlayerWrap');
+  var inlinePlayerMount=document.getElementById('inlinePlayerMount');
+  var playerHome=playerOverlay;
+  var playerIsInline=false;
 
   function timeText(sec){
     sec=Math.max(0,Math.floor(Number(sec)||0));
@@ -1399,6 +1441,10 @@ button{cursor:pointer}
     playerError.classList.remove('show');
     document.getElementById('playerMovieTitle').textContent=currentMovieData.title;
     document.getElementById('playerEpisodeTitle').textContent=ep.number+'-qism';
+    if(playerIsInline){
+      document.getElementById('inlinePlayerMetaTitle').textContent=currentMovieData.title||'AIKINOUZ';
+      document.getElementById('inlinePlayerMetaSub').textContent=(appLang==='ru'?'Серия ':appLang==='en'?'Episode ':'Qism ')+ep.number;
+    }
     document.getElementById('progressBar').value=0;
     document.getElementById('currentTime').textContent='0:00';
     playerVideo.src=ep.stream_url;
@@ -1409,11 +1455,33 @@ button{cursor:pointer}
       var p=playerVideo.play(); if(p&&p.catch)p.catch(function(){showPlayerControls(false)});
     }
   }
+  function attachInlinePlayer(movie,index){
+    if(!inlinePlayerMount||!inlinePlayerWrap)return false;
+    if(videoStage.parentNode!==inlinePlayerMount)inlinePlayerMount.appendChild(videoStage);
+    videoStage.classList.add('inlineStage');
+    playerOverlay.classList.remove('active');
+    inlinePlayerWrap.classList.add('active');
+    playerIsInline=true;
+    document.body.style.overflow='';
+    document.getElementById('inlinePlayerMetaTitle').textContent=movie.title||'AIKINOUZ';
+    var ep=(movie.episodes||[])[index];
+    document.getElementById('inlinePlayerMetaSub').textContent=ep?((appLang==='ru'?'Серия ':appLang==='en'?'Episode ':'Qism ')+ep.number):'Premium player';
+    return true;
+  }
   function openPlayer(movie,index){
     currentMovieData=movie;
-    playerOverlay.classList.add('active');
-    document.body.style.overflow='hidden';
+    var inlineOk=attachInlinePlayer(movie,index);
+    if(!inlineOk){
+      if(videoStage.parentNode!==playerOverlay)playerOverlay.appendChild(videoStage);
+      videoStage.classList.remove('inlineStage');
+      playerOverlay.classList.add('active');
+      document.body.style.overflow='hidden';
+      playerIsInline=false;
+    }
     loadPlayerEpisode(index,true);
+    if(inlineOk){
+      setTimeout(function(){inlinePlayerWrap.scrollIntoView({behavior:'smooth',block:'start'})},40);
+    }
   }
   function closePlayer(){
     clearTimeout(playerHideTimer);
@@ -1423,6 +1491,10 @@ button{cursor:pointer}
     playerVideo.load();
     playlistDrawer.classList.remove('open');
     playerOverlay.classList.remove('active');
+    inlinePlayerWrap.classList.remove('active');
+    if(videoStage.parentNode!==playerOverlay)playerOverlay.appendChild(videoStage);
+    videoStage.classList.remove('inlineStage');
+    playerIsInline=false;
     document.body.style.overflow='';
     showPlayerControls(false);
   }
@@ -1684,7 +1756,15 @@ button{cursor:pointer}
   });
   document.getElementById('playerFullscreen').addEventListener('click',function(e){
     e.stopPropagation();
-    try{if(playerVideo.requestFullscreen)playerVideo.requestFullscreen();else if(playerVideo.webkitEnterFullscreen)playerVideo.webkitEnterFullscreen()}catch(err){}
+    try{
+      var p=null;
+      if(videoStage.requestFullscreen)p=videoStage.requestFullscreen();
+      else if(playerVideo.requestFullscreen)p=playerVideo.requestFullscreen();
+      else if(playerVideo.webkitEnterFullscreen)playerVideo.webkitEnterFullscreen();
+      if(p&&p.then)p.then(function(){
+        try{if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(function(){})}catch(x){}
+      }).catch(function(){});
+    }catch(err){}
   });
   document.getElementById('videoStage').addEventListener('click',function(e){
     if(e.target.closest('button')||e.target.closest('input')||e.target.closest('.playlistDrawer'))return;
@@ -1728,7 +1808,7 @@ button{cursor:pointer}
   playerVideo.addEventListener('error',function(){playerError.classList.add('show');showPlayerControls(false)});
   document.getElementById('progressBar').addEventListener('input',function(e){if(playerVideo.duration)playerVideo.currentTime=(Number(e.target.value)/1000)*playerVideo.duration});
   document.addEventListener('visibilitychange',function(){
-    if(document.hidden&&playerOverlay.classList.contains('active')){
+    if(document.hidden&&(playerOverlay.classList.contains('active')||inlinePlayerWrap.classList.contains('active'))){
       sendWatchProgress(true,'progress');
       playerVideo.pause();
     }
