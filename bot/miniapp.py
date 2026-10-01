@@ -324,7 +324,28 @@ async def poster(request: web.Request) -> web.Response:
     return web.Response(body=data, content_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
 
 
+async def brand_logo(request: web.Request) -> web.Response:
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1a6"/><stop offset=".45" stop-color="#e0b84f"/><stop offset="1" stop-color="#9b6617"/></linearGradient>
+  <filter id="s"><feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity=".45"/></filter>
+</defs>
+<rect width="512" height="512" rx="110" fill="#050505"/>
+<g filter="url(#s)">
+  <path d="M115 351 244 104c7-13 24-13 31 0l124 247h-70l-18-41H197l-19 41h-63zm109-101h62l-31-73-31 73z" fill="url(#g)"/>
+  <path d="M322 118h95v42h-64v29h54v40h-54v30h67v43h-98V118z" fill="url(#g)" opacity=".96"/>
+  <rect x="340" y="128" width="13" height="20" rx="3" fill="#050505"/><rect x="374" y="128" width="13" height="20" rx="3" fill="#050505"/>
+  <rect x="340" y="178" width="13" height="20" rx="3" fill="#050505"/><rect x="374" y="178" width="13" height="20" rx="3" fill="#050505"/>
+  <rect x="340" y="228" width="13" height="20" rx="3" fill="#050505"/><rect x="374" y="228" width="13" height="20" rx="3" fill="#050505"/>
+</g>
+<text x="256" y="420" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="58" font-weight="800" letter-spacing="5" fill="url(#g)">AIKINOUZ</text>
+<text x="256" y="454" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="16" letter-spacing="5" fill="#d8b65f">PREMIUM CINEMA</text>
+</svg>"""
+    return web.Response(text=svg, content_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+
 def register_miniapp_routes(app: web.Application) -> None:
+    app.router.add_get("/app/logo.svg", brand_logo)
     app.router.add_get("/app", app_page)
     app.router.add_get("/app/", app_page)
     app.router.add_get("/app/api/catalog", api_catalog)
@@ -358,6 +379,7 @@ button{cursor:pointer}
 .top{position:sticky;top:0;z-index:30;background:#050505f3;backdrop-filter:blur(22px);border-bottom:1px solid #1f1a13;padding:10px 14px}
 .brand{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .brandmark{display:flex;align-items:center;gap:10px}
+.brandLogo{width:46px;height:46px;border-radius:14px;object-fit:cover;border:1px solid #6b4e20;background:#050505;box-shadow:0 0 28px #d99d2d33}
 .crown{width:42px;height:42px;border-radius:14px;background:linear-gradient(145deg,#ffe58a,#a96913);display:grid;place-items:center;color:#1b1102;font-size:23px;box-shadow:0 0 28px #d99d2d33}
 .logo{font-weight:950;letter-spacing:1.1px;color:#f6ca63;font-size:20px}
 .sub{font-size:10px;color:#a88b54;letter-spacing:1.8px}
@@ -415,7 +437,7 @@ button{cursor:pointer}
 
 .profile{padding:10px 14px 24px}.profileCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0c0c0c);border-radius:20px;padding:18px}.profileName{font-size:21px;font-weight:950}.status{font-size:12px;color:#efc054;margin-top:5px}
 .profileMenu{margin-top:14px;display:grid;gap:8px}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}
-.supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
+.supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:64px;height:64px;border-radius:18px;border:1px solid #7b5b24}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
 .empty{padding:28px 14px;color:#888;text-align:center}
 
 .playerOverlay{position:fixed;inset:0;z-index:1000;background:#000;display:none;overflow:hidden}
@@ -462,7 +484,7 @@ button{cursor:pointer}
 <div class="app">
 <header class="top">
   <div class="brand">
-    <div class="brandmark"><div class="crown">♛</div><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div>
+    <div class="brandmark"><img class="brandLogo" src="/app/logo.svg" alt="AIKINOUZ logo"><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div>
     <div class="headRight"><div id="avatar" class="avatar">A</div><button id="closeApp" class="closeBtn">×</button></div>
   </div>
 </header>
@@ -481,6 +503,15 @@ button{cursor:pointer}
   <section class="section"><div class="sectionHead"><h2>🔥 Trend kinolar</h2><button data-open="catalog" data-filter="trend">Barchasi ›</button></div><div id="trendRow" class="row"></div></section>
   <section class="section"><div class="sectionHead"><h2>🆕 Yangi kinolar</h2><button data-open="catalog" data-filter="new">Barchasi ›</button></div><div id="newRow" class="row"></div></section>
   <section class="section"><div class="sectionHead"><h2>💎 VIP tanlov</h2><button data-open="vip">Ko‘rish ›</button></div><div id="vipRow" class="row"></div></section>
+  <section class="publicCompany">
+    <div class="publicCompanyHead"><img src="/app/logo.svg" alt="AIKINOUZ"><div><div class="publicCompanyTitle">AIKINOUZ</div><div class="publicCompanySub">PREMIUM KINO PLATFORMASI</div></div></div>
+    <div class="publicCompanyInfo">
+      <div>👑 <b>President:</b> BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</div>
+      <div>📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com</div>
+      <div>📌 <b>Status:</b> rasmiy ro‘yxatdan o‘tish rejalashtirilgan</div>
+      <div>© 2026 AIKINOUZ. All rights reserved.</div>
+    </div>
+  </section>
 </main>
 
 <main id="catalog" class="page">
@@ -532,14 +563,15 @@ button{cursor:pointer}
 <main id="support" class="page">
   <div class="pageTop"><button class="backBtn" data-open="profile">‹</button><div class="pageTitle">Support</div></div>
   <section class="supportCard">
-    <div class="supportTitle">👑 AIKINOUZ</div><div class="sub">PREMIUM KINO PLATFORMASI</div>
+    <div class="publicCompanyHead"><img src="/app/logo.svg" alt="AIKINOUZ"><div><div class="supportTitle">AIKINOUZ</div><div class="sub">PREMIUM KINO PLATFORMASI</div></div></div>
     <div class="supportMeta">
-      <div>🏢 <b>Kompaniya:</b> AIKINOUZ</div>
-      <div>👑 <b>Kompaniya prezidenti:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI</div>
-      <div>📧 <b>Email:</b> boburshox1311m@gmail.com</div>
-      <div>🧩 <b>Project:</b> AIKINOUZ / AIKINO_UZ_BOT</div>
+      <div>🏢 <b>Brend / loyiha:</b> AIKINOUZ</div>
+      <div>👑 <b>President:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</div>
+      <div>📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com</div>
+      <div>🧩 <b>Platforma:</b> AIKINOUZ / AIKINO_UZ_BOT</div>
+      <div>📌 <b>Status:</b> rasmiy ro‘yxatdan o‘tish rejalashtirilgan</div>
       <div>© 2026 AIKINOUZ. All rights reserved.</div>
-      <div><b>Project owner / author:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON UGLI</div>
+      <div><b>Project owner / author:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</div>
     </div>
     <div class="supportForm"><h3>💬 Adminga yozish</h3><textarea id="supportMessage" maxlength="2000" placeholder="Savol, muammo yoki taklifingizni yozing..."></textarea><button id="supportSend" class="supportSend">📨 XABARNI YUBORISH</button><div id="supportStatus" class="supportNote">Xabaringiz AIKINOUZ adminiga yuboriladi.</div></div>
   </section>
