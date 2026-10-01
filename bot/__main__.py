@@ -77,7 +77,7 @@ async def main() -> None:
         except Exception:
             logging.getLogger(__name__).exception("Telegram menu button update failed")
     storage_stop = asyncio.Event()
-    storage_task = asyncio.create_task(storage_worker(db, bot, storage, storage_stop))
+    storage_task = asyncio.create_task(storage_worker(db, bot, storage, storage_stop, int(admin_id)))
     try:
         await bot.delete_webhook(drop_pending_updates=False)
         await dp.start_polling(bot)
