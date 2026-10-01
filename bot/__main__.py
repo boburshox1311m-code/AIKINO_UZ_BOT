@@ -7,6 +7,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
+from aiogram.types import MenuButtonWebApp, WebAppInfo
 
 from .database import Database
 from .handlers import router
@@ -59,6 +60,18 @@ async def main() -> None:
     storage = R2Storage()
     dp["storage"] = storage
     web_runner = await start_payment_web(bot, db, int(admin_id), storage)
+
+    public_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+    if public_domain:
+        try:
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="AIKINOUZ PREMIERE",
+                    web_app=WebAppInfo(url=f"https://{public_domain}/app"),
+                )
+            )
+        except Exception:
+            logging.getLogger(__name__).exception("Telegram menu button update failed")
     storage_stop = asyncio.Event()
     storage_task = asyncio.create_task(storage_worker(db, bot, storage, storage_stop))
     try:
