@@ -77,9 +77,21 @@ async def app_page(request: web.Request) -> web.Response:
 
 async def api_catalog(request: web.Request) -> web.Response:
     db: Database = request.app["db"]
-    movies = await db.miniapp_movies(100)
+    try:
+        offset = max(0, int(request.query.get("offset", "0")))
+        limit = max(1, min(int(request.query.get("limit", "36")), 50))
+    except ValueError:
+        raise web.HTTPBadRequest()
+    movies = await db.miniapp_movies(offset, limit)
+    total = await db.miniapp_movie_count()
     payload = [_movie_json(movie) for movie in movies]
-    return web.json_response({"movies": payload})
+    return web.json_response({
+        "movies": payload,
+        "offset": offset,
+        "limit": limit,
+        "total": total,
+        "has_more": offset + len(payload) < total,
+    })
 
 
 async def api_movie(request: web.Request) -> web.Response:
@@ -91,18 +103,36 @@ async def api_movie(request: web.Request) -> web.Response:
         movie_id = int(request.match_info["movie_id"])
     except ValueError:
         raise web.HTTPBadRequest()
+
     movie = await db.movie_with_stats(movie_id)
     if not movie:
         raise web.HTTPNotFound()
-    episodes = await db.episodes(movie_id, 0, 200)
-    data = _movie_json(movie)
 
     user = _request_user(request)
     user_id = int(user["id"]) if user else 0
-    can_stream = bool(user_id)
-    if movie["is_vip"] and user_id != admin_id:
-        can_stream = can_stream and await db.is_vip_user(user_id)
+    is_admin = user_id == admin_id
+    if movie["is_vip"] and not is_admin:
+        if not user_id or not await db.is_vip_user(user_id):
+            return web.json_response({"error": "vip_required"}, status=403)
 
+    episodes = await db.miniapp_episodes(movie_id, bool(movie["is_vip"]), 0, 200)
+    data = _movie_json(movie)
+    data["processing"] = bool(movie["is_vip"] and not episodes)
+
+    resume = await db.movie_watch_progress(user_id, movie_id) if user_id else None
+    if resume:
+        data["resume"] = {
+            "episode_id": int(resume["episode_id"]),
+            "current_time": float(resume["current_time"] or 0),
+            "duration": float(resume["duration"] or 0),
+            "last_watched_at": resume["last_watched_at"].isoformat(),
+        }
+    else:
+        data["resume"] = None
+
+    # Telegram fallback links are signed for 6h. R2 links are created only when a
+    # movie is opened and expire after 1h; VIP movies never fall back to an
+    # unfinished Telegram/local file.
     expires = int(time.time()) + 6 * 60 * 60
     payload = []
     for ep in episodes:
@@ -111,20 +141,20 @@ async def api_movie(request: web.Request) -> web.Response:
             "number": int(ep["episode_number"]),
             "storage_status": ep["storage_status"] if "storage_status" in ep.keys() else "pending",
         }
-        if can_stream:
-            if storage.enabled and "r2_key" in ep.keys() and ep["r2_key"]:
-                item["stream_url"] = storage.presigned_get(ep["r2_key"], expires=7200)
-                item["stream_source"] = "r2"
-            else:
-                sig = _stream_signature(bot.token, int(ep["id"]), user_id, expires)
-                item["stream_url"] = f"/app/stream/{ep['id']}?u={user_id}&e={expires}&s={sig}"
-                item["stream_source"] = "telegram"
+        if storage.enabled and "r2_key" in ep.keys() and ep["r2_key"]:
+            item["stream_url"] = storage.presigned_get(ep["r2_key"], expires=3600)
+            item["stream_source"] = "r2"
+        elif not movie["is_vip"] and user_id:
+            sig = _stream_signature(bot.token, int(ep["id"]), user_id, expires)
+            item["stream_url"] = f"/app/stream/{ep['id']}?u={user_id}&e={expires}&s={sig}"
+            item["stream_source"] = "telegram"
         else:
             item["stream_url"] = None
             item["stream_source"] = None
         payload.append(item)
+
     data["episodes"] = payload
-    data["stream_locked"] = bool(movie["is_vip"] and not can_stream)
+    data["stream_locked"] = False
     return web.json_response(data)
 
 
@@ -394,6 +424,7 @@ async def api_admin_stats(request: web.Request) -> web.Response:
     db: Database = request.app["db"]
     stats = await db.app_statistics(admin_id)
     top_movies = await db.app_top_movies(admin_id, 5)
+    vip_movies = await db.vip_movies_watch_stats(20)
     return web.json_response({
         "total_users": int(stats["total_users"] or 0),
         "total_sessions": int(stats["total_sessions"] or 0),
@@ -413,6 +444,14 @@ async def api_admin_stats(request: web.Request) -> web.Response:
             "views": int(movie["view_count"] or 0),
             "viewers": int(movie["unique_viewers"] or 0),
         } for movie in top_movies],
+        "vip_movies": [{
+            "id": int(movie["id"]),
+            "title": movie["title"],
+            "views": int(movie["views"] or 0),
+            "unique_viewers": int(movie["unique_viewers"] or 0),
+            "average_watch_time": float(movie["average_watch_time"] or 0),
+            "completed_views": int(movie["completed_views"] or 0),
+        } for movie in vip_movies],
     })
 
 
