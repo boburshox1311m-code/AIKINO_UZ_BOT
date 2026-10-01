@@ -82,6 +82,7 @@ class Database:
                 is_active BOOLEAN NOT NULL DEFAULT TRUE
             );
             ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+            ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'uz';
             CREATE INDEX IF NOT EXISTS bot_users_last_seen_idx
                 ON bot_users(last_seen_at DESC);
             CREATE TABLE IF NOT EXISTS episode_views (
@@ -685,6 +686,27 @@ class Database:
             VALUES($1, NOW(), NOW())
             ON CONFLICT(user_id) DO UPDATE SET last_seen_at=NOW(), is_active=TRUE
         """, user_id)
+
+    async def user_language(self, user_id: int) -> str:
+        assert self.pool
+        value = await self.pool.fetchval(
+            "SELECT language FROM bot_users WHERE user_id=$1",
+            user_id,
+        )
+        return value if value in {"uz", "ru", "en"} else "uz"
+
+    async def set_user_language(self, user_id: int, language: str):
+        assert self.pool
+        if language not in {"uz", "ru", "en"}:
+            raise ValueError("Unsupported language")
+        return await self.pool.execute("""
+            INSERT INTO bot_users(user_id, first_seen_at, last_seen_at, is_active, language)
+            VALUES($1, NOW(), NOW(), TRUE, $2)
+            ON CONFLICT(user_id) DO UPDATE SET
+                language=EXCLUDED.language,
+                last_seen_at=NOW(),
+                is_active=TRUE
+        """, user_id, language)
 
     async def broadcast_user_ids(self, admin_id: int):
         assert self.pool
