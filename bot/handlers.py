@@ -342,22 +342,22 @@ def popularity_badge(view_count: int) -> str:
     return ""
 
 
-async def episode_markup(db: Database, ep, user_id: int):
+async def episode_markup(db: Database, ep, user_id: int, lang: str = "uz"):
     prev_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "prev")
     next_ep = await db.adjacent_episode(ep["movie_id"], ep["episode_number"], "next")
     rows = []
     nav = []
     if prev_ep:
-        nav.append(InlineKeyboardButton(text="⬅️ Oldingi qism", callback_data=f"ep:{prev_ep['id']}"))
+        nav.append(InlineKeyboardButton(text=bt(lang, "prev_episode"), callback_data=f"ep:{prev_ep['id']}"))
     if next_ep:
-        nav.append(InlineKeyboardButton(text="Keyingi qism ➡️", callback_data=f"ep:{next_ep['id']}"))
+        nav.append(InlineKeyboardButton(text=bt(lang, "next_episode"), callback_data=f"ep:{next_ep['id']}"))
     if nav:
         rows.append(nav)
     is_favorite = await db.is_episode_favorite(user_id, ep["id"])
-    favorite_text = "💔 Sevimlilardan olib tashlash" if is_favorite else "❤️ Qismni sevimlilarga qo‘shish"
+    favorite_text = bt(lang, "remove_ep_fav") if is_favorite else bt(lang, "add_ep_fav")
     rows.append([InlineKeyboardButton(text=favorite_text, callback_data=f"fave:{ep['id']}")])
-    rows.append([InlineKeyboardButton(text="🎬 Barcha qismlar", callback_data=f"movie:{ep['movie_id']}")])
-    rows.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")])
+    rows.append([InlineKeyboardButton(text=bt(lang, "all_episodes"), callback_data=f"movie:{ep['movie_id']}")])
+    rows.append([InlineKeyboardButton(text=bt(lang, "home"), callback_data="home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -371,23 +371,19 @@ async def send_episode_message(
     ep = await db.episode(episode_id)
     if not ep or not ep["file_id"]:
         return False
+    lang = await db.user_language(viewer_user_id or message.chat.id)
     if (
         ep["movie_is_vip"]
         and viewer_user_id != admin_id
         and (viewer_user_id is None or not await db.is_vip_user(viewer_user_id))
     ):
-        await message.answer(
-            "💎 <b>AIKINOUZ VIP</b>\n\n"
-            "👑 Bu kino maxsus VIP kolleksiyaga kiradi.\n"
-            "⭐ VIP paketni faollashtirib, eksklyuziv kontentni oching.",
-            reply_markup=vip_locked_markup(),
-        )
+        await message.answer(bt(lang, "vip_movie_locked"), reply_markup=vip_locked_markup(lang))
         return True
-    caption = ep["caption"] or f"{ep['movie_emoji']} <b>{ep['movie_title']}</b> — {ep['episode_number']}-QISM"
+    caption = ep["caption"] or f"{ep['movie_emoji']} <b>{ep['movie_title']}</b> — {bt(lang, 'episode', n=ep['episode_number'])}"
     await message.answer_video(
         ep["file_id"],
         caption=caption,
-        reply_markup=await episode_markup(db, ep, viewer_user_id or message.chat.id),
+        reply_markup=await episode_markup(db, ep, viewer_user_id or message.chat.id, lang),
         supports_streaming=True,
         protect_content=True,
     )
@@ -738,7 +734,7 @@ async def check_subscription(
     )
 
 
-async def premium_movie_feed_markup(items, back="home"):
+async def premium_movie_feed_markup(items, back="home", lang: str = "uz"):
     b = InlineKeyboardBuilder()
     for movie in items:
         b.button(
@@ -746,35 +742,33 @@ async def premium_movie_feed_markup(items, back="home"):
             callback_data=f"movie:{movie['id']}",
         )
     b.adjust(1)
-    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data=back))
+    b.row(InlineKeyboardButton(text=bt(lang, "home"), callback_data=back))
     return b.as_markup()
 
 
 @router.callback_query(F.data == "trending")
 async def trending_movies(call: CallbackQuery, db: Database, admin_id: int):
+    lang = await db.user_language(call.from_user.id)
     items = await db.trending_movies(admin_id, 8)
-    text = (
-        "🔥 <b>TRENDDA HOZIR</b>\n\n"
-        "1000+ ko‘rishga yetgan mashhur kinolar:"
-        if items else
-        "🔥 <b>TRENDDA HOZIR</b>\n\nHozircha 1000 ta ko‘rishga yetgan kino yo‘q."
+    await safe_edit(
+        call,
+        bt(lang, "trend_title") if items else bt(lang, "trend_empty"),
+        await premium_movie_feed_markup(items, lang=lang),
     )
-    await safe_edit(call, text, await premium_movie_feed_markup(items))
 
 
 @router.callback_query(F.data == "newmovies")
 async def new_movies(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
     items = await db.latest_movies(8)
-    text = (
-        "🆕 <b>YANGI KINOLAR</b>\n\n"
-        "AIKINOUZ katalogiga eng so‘nggi qo‘shilganlar:"
-        if items else
-        "🆕 <b>YANGI KINOLAR</b>\n\nHozircha kinolar qo‘shilmagan."
+    await safe_edit(
+        call,
+        bt(lang, "new_title") if items else bt(lang, "new_empty"),
+        await premium_movie_feed_markup(items, lang=lang),
     )
-    await safe_edit(call, text, await premium_movie_feed_markup(items))
 
 
-async def movie_keyboard(db: Database, page: int, prefix="movie", back="home"):
+async def movie_keyboard(db: Database, page: int, prefix="movie", back="home", lang: str = "uz"):
     count = await db.public_movie_count()
     page = max(0, min(page, max(0, math.ceil(count / PAGE_MOVIES) - 1)))
     items = await db.public_movies(page * PAGE_MOVIES, PAGE_MOVIES)
@@ -790,24 +784,19 @@ async def movie_keyboard(db: Database, page: int, prefix="movie", back="home"):
         nav.append(InlineKeyboardButton(text="➡️", callback_data=f"movies:{page+1}"))
     if nav:
         b.row(*nav)
-    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data=back))
+    b.row(InlineKeyboardButton(text=bt(lang, "home"), callback_data=back))
     return b.as_markup(), count, page
 
 
 @router.callback_query(F.data.startswith("movies:"))
 async def show_movies(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
     page = int(call.data.split(":")[1])
-    kb, count, page = await movie_keyboard(db, page)
-    text = (
-        "🎬 <b>AIKINOUZ · KINO KATALOGI</b>\n\n"
-        "Kino nomini bosing va tomoshani boshlang:"
-        if count else
-        "🎬 <b>AIKINOUZ KINO KATALOGI</b>\n\nHozircha kinolar qo‘shilmagan."
-    )
-    await safe_edit(call, text, kb)
+    kb, count, page = await movie_keyboard(db, page, lang=lang)
+    await safe_edit(call, bt(lang, "catalog_title") if count else bt(lang, "catalog_empty"), kb)
 
 
-async def vip_movie_keyboard(db: Database, page: int):
+async def vip_movie_keyboard(db: Database, page: int, lang: str = "uz"):
     count = await db.vip_movie_count()
     page = max(0, min(page, max(0, math.ceil(count / PAGE_MOVIES) - 1)))
     items = await db.vip_movies(page * PAGE_MOVIES, PAGE_MOVIES)
@@ -822,54 +811,45 @@ async def vip_movie_keyboard(db: Database, page: int):
         nav.append(InlineKeyboardButton(text="➡️", callback_data=f"vip:{page+1}"))
     if nav:
         b.row(*nav)
-    b.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
+    b.row(InlineKeyboardButton(text=bt(lang, "home"), callback_data="home"))
     return b.as_markup(), count, page
 
 
 @router.callback_query(F.data.startswith("vip:"))
 async def vip_movies(call: CallbackQuery, db: Database, admin_id: int):
+    lang = await db.user_language(call.from_user.id)
     vip = await db.vip_user(call.from_user.id)
     if call.from_user.id != admin_id and not vip:
-        return await safe_edit(
-            call,
-            "💎 <b>AIKINOUZ VIP</b>\n\n"
-            "👑 Eksklyuziv kinolar va maxsus kontent shu yerda.\n"
-            "⭐ VIP paketni faollashtirib bo‘limni oching.",
-            vip_locked_markup(),
-        )
+        return await safe_edit(call, bt(lang, "vip_locked"), vip_locked_markup(lang))
     page = int(call.data.split(":")[1])
-    kb, count, page = await vip_movie_keyboard(db, page)
+    kb, count, page = await vip_movie_keyboard(db, page, lang)
     if call.from_user.id == admin_id:
-        expiry = "Admin uchun doim ochiq"
+        expiry = bt(lang, "vip_admin_open")
     else:
-        expiry = f"VIP muddati: {vip['expires_at'].astimezone(LONDON_TZ).strftime('%d.%m.%Y %H:%M')} gacha"
-    text = (
-        f"💎 <b>AIKINOUZ VIP KOLLEKSIYA</b>\n\n{expiry}\n\nEksklyuziv kinoni tanlang:"
-        if count else
-        f"💎 <b>AIKINOUZ VIP KOLLEKSIYA</b>\n\n{expiry}\n\nHozircha VIP kinolar qo‘shilmagan."
-    )
+        expiry = bt(lang, "vip_expiry", date=vip['expires_at'].astimezone(LONDON_TZ).strftime('%d.%m.%Y %H:%M'))
+    text = f"💎 <b>AIKINOUZ VIP</b>\n\n{expiry}\n\n" + (bt(lang, "vip_choose") if count else bt(lang, "vip_empty"))
     await safe_edit(call, text, kb)
 
 
-async def episode_keyboard(db: Database, movie_id: int, page: int, user_id: int):
+async def episode_keyboard(db: Database, movie_id: int, page: int, user_id: int, lang: str = "uz"):
     count = await db.episode_count(movie_id)
     page = max(0, min(page, max(0, math.ceil(count / PAGE_EPISODES) - 1)))
     eps = await db.episodes(movie_id, page * PAGE_EPISODES, PAGE_EPISODES)
     b = InlineKeyboardBuilder()
     for e in eps:
-        b.button(text=f"{e['episode_number']}-QISM", callback_data=f"ep:{e['id']}")
+        b.button(text=bt(lang, "episode", n=e['episode_number']), callback_data=f"ep:{e['id']}")
     b.adjust(2)
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"moviepage:{movie_id}:{page-1}"))
+        nav.append(InlineKeyboardButton(text=bt(lang, "back"), callback_data=f"moviepage:{movie_id}:{page-1}"))
     if (page + 1) * PAGE_EPISODES < count:
-        nav.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"moviepage:{movie_id}:{page+1}"))
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"moviepage:{movie_id}:{page+1}"))
     if nav:
         b.row(*nav)
     is_favorite = await db.is_movie_favorite(user_id, movie_id)
-    favorite_text = "💔 Kinoni sevimlilardan olib tashlash" if is_favorite else "❤️ Kinoni sevimlilarga qo‘shish"
+    favorite_text = bt(lang, "remove_movie_fav") if is_favorite else bt(lang, "add_movie_fav")
     b.row(InlineKeyboardButton(text=favorite_text, callback_data=f"favm:{movie_id}:{page}"))
-    b.row(InlineKeyboardButton(text="🎬 Kinolar", callback_data="movies:0"), InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home"))
+    b.row(InlineKeyboardButton(text=bt(lang, "movies"), callback_data="movies:0"), InlineKeyboardButton(text=bt(lang, "home"), callback_data="home"))
     return b.as_markup(), count
 
 
@@ -886,25 +866,21 @@ async def movie_page(call: CallbackQuery, db: Database, admin_id: int):
 
 
 async def render_movie(call, db, movie_id, page, admin_id):
+    lang = await db.user_language(call.from_user.id)
     movie = await db.movie(movie_id)
     if not movie:
-        return await safe_edit(call, "Kino topilmadi.", main_menu())
+        return await safe_edit(call, bt(lang, "movie_not_found"), main_menu(False, lang))
     if movie["is_vip"] and call.from_user.id != admin_id and not await db.is_vip_user(call.from_user.id):
-        return await safe_edit(
-            call,
-            "💎 <b>AIKINOUZ VIP</b>\n\n"
-            "👑 Bu kino maxsus VIP kolleksiyaga kiradi.\n"
-            "⭐ VIP paketni faollashtirib, eksklyuziv kontentni oching.",
-            vip_locked_markup(),
-        )
-    kb, count = await episode_keyboard(db, movie_id, page, call.from_user.id)
+        return await safe_edit(call, bt(lang, "vip_movie_locked"), vip_locked_markup(lang))
+    kb, count = await episode_keyboard(db, movie_id, page, call.from_user.id, lang)
     title = f"🎬 <b>{escape(movie['title'])}</b>"
     description = escape(movie["description"]) if movie["description"] else ""
     access_badge = "💎 VIP" if movie["is_vip"] else "✨ AIKINOUZ"
     views = int(movie["view_count"] or 0)
     hot_badge = popularity_badge(views)
-    popularity_line = f"{hot_badge} · 👁 {format_number(views)} ko‘rish" if hot_badge else f"👁 {format_number(views)} ko‘rish"
-    status = f"🎞 <b>{count} ta qism</b> · Kerakli qismni tanlang:" if count else "🎞 Hozircha qismlar yo‘q."
+    view_line = bt(lang, "views", views=format_number(views))
+    popularity_line = f"{hot_badge} · {view_line}" if hot_badge else view_line
+    status = bt(lang, "episodes_status", count=count) if count else bt(lang, "episodes_empty")
     text = (
         f"{title}\n"
         f"{access_badge} · {popularity_line}\n\n"
