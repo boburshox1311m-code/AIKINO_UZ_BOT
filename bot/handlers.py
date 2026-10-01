@@ -162,7 +162,7 @@ def main_menu(is_admin=False):
     rows = []
     if mini_app_url:
         rows.append([
-            InlineKeyboardButton(text="🎬 AIKINOUZ KINO PLATFORMASI", web_app=WebAppInfo(url=mini_app_url))
+            InlineKeyboardButton(text="👑 AIKINOUZ KINO PLATFORMASI 👑", web_app=WebAppInfo(url=mini_app_url))
         ])
     rows += [
         [
