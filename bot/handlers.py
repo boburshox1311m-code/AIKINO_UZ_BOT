@@ -639,7 +639,7 @@ ABOUT_TEXT = (
     "👑 <b>President:</b> BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI\n"
     "📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com\n"
     "🧩 <b>Platforma:</b> AIKINOUZ / AIKINO_UZ_BOT\n"
-    "📌 <b>Status:</b> rasmiy ro‘yxatdan o‘tish rejalashtirilgan\n\n"
+    "\n"
     "© 2026 AIKINOUZ. All rights reserved.\n"
     "<i>Project owner / author: BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI.</i>"
 )
