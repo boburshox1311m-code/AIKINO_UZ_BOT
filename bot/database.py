@@ -707,6 +707,45 @@ class Database:
                    AND p.current_time/p.duration>=0.90) AS completed_views
         """, movie_id)
 
+    async def vip_movies_watch_stats(self, limit: int = 20):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT
+                m.id,
+                m.title,
+                COALESCE(v.views,0) AS views,
+                COALESCE(v.unique_viewers,0) AS unique_viewers,
+                COALESCE(p.average_watch_time,0) AS average_watch_time,
+                COALESCE(p.completed_views,0) AS completed_views
+            FROM movies m
+            LEFT JOIN (
+                SELECT e.movie_id,
+                       COUNT(*) AS views,
+                       COUNT(DISTINCT a.user_id) AS unique_viewers
+                FROM app_watch_events a
+                JOIN episodes e ON e.id=a.episode_id
+                GROUP BY e.movie_id
+            ) v ON v.movie_id=m.id
+            LEFT JOIN (
+                SELECT movie_id,
+                       AVG(current_time) AS average_watch_time,
+                       COUNT(*) FILTER (
+                           WHERE duration>0 AND current_time/duration>=0.90
+                       ) AS completed_views
+                FROM movie_watch_progress
+                GROUP BY movie_id
+            ) p ON p.movie_id=m.id
+            WHERE m.is_vip=TRUE
+              AND EXISTS (
+                  SELECT 1 FROM episodes e2
+                  WHERE e2.movie_id=m.id
+                    AND e2.storage_status='ready'
+                    AND e2.r2_key IS NOT NULL
+              )
+            ORDER BY views DESC, m.created_at DESC
+            LIMIT $1
+        """, max(1, min(limit, 100)))
+
     async def is_movie_favorite(self, user_id: int, movie_id: int) -> bool:
         assert self.pool
         return bool(await self.pool.fetchval(
