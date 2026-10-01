@@ -136,6 +136,7 @@ async def api_me(request: web.Request) -> web.Response:
     user_id = int(user["id"])
     admin_id: int = request.app["admin_id"]
     await db.record_app_visit_once(user_id)
+    language = await db.user_language(user_id)
     vip = await db.vip_user(user_id)
     progress = await db.watch_progress(user_id)
     favorites = await db.favorite_movies(user_id, 100)
@@ -148,6 +149,7 @@ async def api_me(request: web.Request) -> web.Response:
             "username": user.get("username", ""),
         },
         "is_admin": user_id == admin_id,
+        "language": language,
         "vip": bool(vip) or user_id == admin_id,
         "vip_expires_at": vip["expires_at"].isoformat() if vip else None,
         "favorite_ids": [int(movie["id"]) for movie in favorites],
@@ -160,6 +162,22 @@ async def api_me(request: web.Request) -> web.Response:
             "duration_seconds": float(progress["duration_seconds"] or 0),
         } if progress else None,
     })
+
+
+async def api_set_language(request: web.Request) -> web.Response:
+    user = _request_user(request)
+    if not user:
+        raise web.HTTPUnauthorized()
+    db: Database = request.app["db"]
+    try:
+        data = await request.json()
+    except Exception:
+        raise web.HTTPBadRequest()
+    language = str(data.get("language", "")).lower()
+    if language not in {"uz", "ru", "en"}:
+        return web.json_response({"error": "unsupported_language"}, status=400)
+    await db.set_user_language(int(user["id"]), language)
+    return web.json_response({"ok": True, "language": language})
 
 
 async def api_payment_info(request: web.Request) -> web.Response:
@@ -608,6 +626,7 @@ def register_miniapp_routes(app: web.Application) -> None:
     app.router.add_get("/app/api/catalog", api_catalog)
     app.router.add_get("/app/api/movie/{movie_id}", api_movie)
     app.router.add_get("/app/api/me", api_me)
+    app.router.add_post("/app/api/language", api_set_language)
     app.router.add_get("/app/api/payment-info", api_payment_info)
     app.router.add_get("/app/api/admin/stats", api_admin_stats)
     app.router.add_post("/app/api/payment-terms/accept", api_accept_payment_terms)
@@ -651,6 +670,7 @@ button{cursor:pointer}
 .headRight{display:flex;align-items:center;gap:8px}
 .avatar,.closeBtn{width:38px;height:38px;border-radius:12px;border:1px solid #3a2d18;background:#101010;color:#f4c75c;display:grid;place-items:center;font-weight:900}
 .closeBtn{color:#ddd;font-size:21px}
+.langBtn{height:38px;min-width:54px;padding:0 10px;border-radius:12px;border:1px solid #3a2d18;background:#101010;color:#f4c75c;font-weight:950}.langChoices{padding:12px 14px 24px;display:grid;gap:10px}.langChoice{width:100%;padding:16px;border-radius:16px;border:1px solid #44351d;background:#111;color:#fff;text-align:left;font-weight:900}.langChoice.active{border-color:#f4c75c;color:#f4c75c;background:#1b150b}
 
 .hero{margin:14px 14px 10px;border:1px solid #57401c;border-radius:24px;min-height:305px;position:relative;overflow:hidden;background:#111 center/cover no-repeat;box-shadow:0 20px 60px #0009}
 .heroShade{position:absolute;inset:0;background:linear-gradient(0deg,#050505f7 0%,#0505058c 48%,#05050522 78%)}
@@ -751,7 +771,7 @@ button{cursor:pointer}
 <header class="top">
   <div class="brand">
     <div class="brandmark"><img class="brandLogo" src="/app/logo.svg" alt="AIKINOUZ logo"><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div>
-    <div class="headRight"><div id="avatar" class="avatar">A</div><button id="closeApp" class="closeBtn">×</button></div>
+    <div class="headRight"><button id="langBtn" class="langBtn">🌐 UZ</button><div id="avatar" class="avatar">A</div><button id="closeApp" class="closeBtn">×</button></div>
   </div>
 </header>
 
@@ -778,6 +798,15 @@ button{cursor:pointer}
       <div>© 2026 AIKINOUZ. All rights reserved.</div>
     </div>
   </section>
+</main>
+
+<main id="language" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="home">‹</button><div id="languagePageTitle" class="pageTitle">Til / Язык / Language</div></div>
+  <div class="langChoices">
+    <button class="langChoice" data-language="uz">🇺🇿 O‘zbekcha</button>
+    <button class="langChoice" data-language="ru">🇷🇺 Русский</button>
+    <button class="langChoice" data-language="en">🇬🇧 English</button>
+  </div>
 </main>
 
 <main id="catalog" class="page">
@@ -944,6 +973,65 @@ button{cursor:pointer}
   var initData = tg && tg.initData ? tg.initData : '';
   var movies = [];
   var me = {authenticated:false,favorite_ids:[]};
+  var appLang='uz';
+  var I18N={
+    uz:{
+      home:'Bosh sahifa',catalog:'Kinolar',search:'Qidiruv',vip:'VIP',profile:'Profil',
+      watch:'▶ Tomosha qilish',catalogBtn:'Katalog',trend:'🔥 Trend kinolar',newMovies:'🆕 Yangi kinolar',vipPick:'💎 VIP tanlov',
+      all:'Barchasi ›',view:'Ko‘rish ›',allFilter:'Barchasi',newFilter:'🆕 Yangi',searchPh:'Kino yoki serial qidiring...',
+      moviePage:'Kino sahifasi',vipCollection:'PREMIUM KOLLEKSIYA',exclusive:'Eksklyuziv',premiumMovie:'Premium kino',fast:'Tez kirish',
+      vipNeed:'VIP kinolar uchun obuna kerak',vipNeedDesc:'AIKINOUZ VIP bo‘limidagi premium kinolarni ko‘rish uchun VIP obuna sotib oling.',
+      buyVip:'⭐ VIP OBUNA SOTIB OLISH',continue:'▶ Davom ettirish',payments:'⭐ VIP / To‘lov',favorites:'♡ Sevimlilar',
+      support:'🛟 AIKINOUZ SUPPORT',paymentTitle:'VIP / To‘lov',starsTitle:'⭐ Telegram Stars orqali VIP',
+      starsDesc:'To‘lov Telegram ichida amalga oshadi. 30 kunlik paket avtomatik yangilanadigan obuna.',
+      manualTitle:'💳 Karta orqali VIP to‘lov',sendReceipt:'📤 Chek rasmini yuborish',
+      receiptHint:'Chek sizning Telegram ID’ingiz bilan adminga yuboriladi.',supportTitle:'Support',
+      supportSend:'📨 XABARNI YUBORISH',supportHint:'Xabaringiz AIKINOUZ adminiga yuboriladi.',
+      standard:'✨ STANDARD',vipActive:'💎 VIP ACTIVE',noFav:'Hozircha sevimli kinolar yo‘q.',
+      noVipMovies:'VIP kinolar hozircha qo‘shilmagan.',noMovies:'Kino topilmadi.',episodes:'qism',views:'ko‘rish',
+      watchNow:'▶ Tomosha',choosePlan:'VIP paketini tanlang:',cardOwner:'Karta egasi:',receiptInstruction:'Tanlangan paket summasini kartaga o‘tkazing, so‘ng chek rasmini yuboring.',
+      days:'kun',months6:'6 oy',year1:'1 yil',auto:'Avtomatik',termsAccept:'✅ Shartlarga roziman',
+      stats:'📊 APP STATISTIKA',languageTitle:'Til / Язык / Language'
+    },
+    ru:{
+      home:'Главная',catalog:'Фильмы',search:'Поиск',vip:'VIP',profile:'Профиль',
+      watch:'▶ Смотреть',catalogBtn:'Каталог',trend:'🔥 В тренде',newMovies:'🆕 Новые фильмы',vipPick:'💎 VIP подборка',
+      all:'Все ›',view:'Смотреть ›',allFilter:'Все',newFilter:'🆕 Новые',searchPh:'Найти фильм или сериал...',
+      moviePage:'Страница фильма',vipCollection:'ПРЕМИАЛЬНАЯ КОЛЛЕКЦИЯ',exclusive:'Эксклюзив',premiumMovie:'Премиум кино',fast:'Быстрый доступ',
+      vipNeed:'Для VIP-фильмов нужна подписка',vipNeedDesc:'Оформите VIP-подписку, чтобы смотреть премиальные фильмы AIKINOUZ.',
+      buyVip:'⭐ КУПИТЬ VIP',continue:'▶ Продолжить просмотр',payments:'⭐ VIP / Оплата',favorites:'♡ Избранное',
+      support:'🛟 AIKINOUZ SUPPORT',paymentTitle:'VIP / Оплата',starsTitle:'⭐ VIP через Telegram Stars',
+      starsDesc:'Оплата проходит внутри Telegram. Пакет на 30 дней продлевается автоматически.',
+      manualTitle:'💳 VIP оплата картой',sendReceipt:'📤 Отправить чек',
+      receiptHint:'Чек будет отправлен администратору вместе с вашим Telegram ID.',supportTitle:'Поддержка',
+      supportSend:'📨 ОТПРАВИТЬ СООБЩЕНИЕ',supportHint:'Сообщение будет отправлено администратору AIKINOUZ.',
+      standard:'✨ STANDARD',vipActive:'💎 VIP ACTIVE',noFav:'Избранных фильмов пока нет.',
+      noVipMovies:'VIP-фильмов пока нет.',noMovies:'Фильм не найден.',episodes:'серий',views:'просмотров',
+      watchNow:'▶ Смотреть',choosePlan:'Выберите VIP-пакет:',cardOwner:'Владелец карты:',receiptInstruction:'Переведите сумму выбранного пакета на карту, затем отправьте фото чека.',
+      days:'дней',months6:'6 месяцев',year1:'1 год',auto:'Автопродление',termsAccept:'✅ Я согласен с условиями',
+      stats:'📊 СТАТИСТИКА APP',languageTitle:'Язык'
+    },
+    en:{
+      home:'Home',catalog:'Movies',search:'Search',vip:'VIP',profile:'Profile',
+      watch:'▶ Watch',catalogBtn:'Catalog',trend:'🔥 Trending',newMovies:'🆕 New movies',vipPick:'💎 VIP picks',
+      all:'View all ›',view:'View ›',allFilter:'All',newFilter:'🆕 New',searchPh:'Search movies or series...',
+      moviePage:'Movie page',vipCollection:'PREMIUM COLLECTION',exclusive:'Exclusive',premiumMovie:'Premium movies',fast:'Fast access',
+      vipNeed:'VIP subscription required',vipNeedDesc:'Buy a VIP subscription to watch premium movies in AIKINOUZ VIP.',
+      buyVip:'⭐ BUY VIP',continue:'▶ Continue watching',payments:'⭐ VIP / Payment',favorites:'♡ Favorites',
+      support:'🛟 AIKINOUZ SUPPORT',paymentTitle:'VIP / Payment',starsTitle:'⭐ VIP with Telegram Stars',
+      starsDesc:'Payment is completed inside Telegram. The 30-day plan renews automatically.',
+      manualTitle:'💳 VIP card payment',sendReceipt:'📤 Send receipt',
+      receiptHint:'Your receipt will be sent to the admin with your Telegram ID.',supportTitle:'Support',
+      supportSend:'📨 SEND MESSAGE',supportHint:'Your message will be sent to the AIKINOUZ admin.',
+      standard:'✨ STANDARD',vipActive:'💎 VIP ACTIVE',noFav:'No favorite movies yet.',
+      noVipMovies:'No VIP movies yet.',noMovies:'Movie not found.',episodes:'episodes',views:'views',
+      watchNow:'▶ Watch',choosePlan:'Choose a VIP plan:',cardOwner:'Card holder:',receiptInstruction:'Transfer the selected plan amount to the card, then upload the receipt.',
+      days:'days',months6:'6 months',year1:'1 year',auto:'Auto-renew',termsAccept:'✅ I agree to the terms',
+      stats:'📊 APP STATISTICS',languageTitle:'Language'
+    }
+  };
+  function tr(k){return (I18N[appLang]&&I18N[appLang][k])||I18N.uz[k]||k}
+
   var catalogFilter = 'all';
   var featuredId = 0;
   var currentMovieData = null;
@@ -951,6 +1039,77 @@ button{cursor:pointer}
   var playerHideTimer = null;
   var lastProgressSave = 0;
   var resumeAppliedEpisodeId = 0;
+
+  function applyLanguage(lang){
+    appLang=(lang==='ru'||lang==='en')?lang:'uz';
+    document.documentElement.lang=appLang;
+    document.getElementById('langBtn').textContent='🌐 '+appLang.toUpperCase();
+    document.querySelectorAll('.langChoice').forEach(function(x){x.classList.toggle('active',x.getAttribute('data-language')===appLang)});
+    var lp=document.getElementById('languagePageTitle'); if(lp)lp.textContent=tr('languageTitle');
+
+    var nav=document.querySelectorAll('.navBtn');
+    if(nav[0])nav[0].innerHTML='<b>⌂</b>'+tr('home');
+    if(nav[1])nav[1].innerHTML='<b>▦</b>'+tr('catalog');
+    if(nav[2])nav[2].innerHTML='<b>⌕</b>'+tr('search');
+    if(nav[3])nav[3].innerHTML='<b>♛</b>'+tr('vip');
+    if(nav[4])nav[4].innerHTML='<b>●</b>'+tr('profile');
+
+    document.getElementById('heroWatch').textContent=tr('watch');
+    document.getElementById('heroCatalog').textContent=tr('catalogBtn');
+    var sh=document.querySelectorAll('#home .sectionHead');
+    if(sh[0]){sh[0].querySelector('h2').textContent=tr('trend');sh[0].querySelector('button').textContent=tr('all')}
+    if(sh[1]){sh[1].querySelector('h2').textContent=tr('newMovies');sh[1].querySelector('button').textContent=tr('all')}
+    if(sh[2]){sh[2].querySelector('h2').textContent=tr('vipPick');sh[2].querySelector('button').textContent=tr('view')}
+
+    var catalogTitle=document.querySelector('#catalog .pageTitle');if(catalogTitle)catalogTitle.textContent=tr('catalog');
+    var filters=document.querySelectorAll('#catalog .filterBtn');
+    if(filters[0])filters[0].textContent=tr('allFilter');
+    if(filters[1])filters[1].textContent='🔥 '+(appLang==='ru'?'Тренды':appLang==='en'?'Trending':'Trend');
+    if(filters[2])filters[2].textContent=tr('newFilter');
+    if(filters[3])filters[3].textContent='💎 VIP';
+    document.getElementById('searchInput').placeholder=tr('searchPh');
+    document.getElementById('searchOnly').placeholder=tr('searchPh');
+    var detailTitle=document.querySelector('#detail .pageTitle');if(detailTitle)detailTitle.textContent=tr('moviePage');
+    var searchTitle=document.querySelector('#search .pageTitle');if(searchTitle)searchTitle.textContent=tr('search');
+    var profileTitle=document.querySelector('#profile .pageTitle');if(profileTitle)profileTitle.textContent=tr('profile');
+
+    var vipSub=document.querySelector('#vip .vipHero .sub');if(vipSub)vipSub.textContent=tr('vipCollection');
+    var benefits=document.querySelectorAll('#vip .benefit');
+    if(benefits[0])benefits[0].innerHTML='<b>💎</b>'+tr('exclusive');
+    if(benefits[1])benefits[1].innerHTML='<b>🎬</b>'+tr('premiumMovie');
+    if(benefits[2])benefits[2].innerHTML='<b>⚡</b>'+tr('fast');
+    var gate=document.getElementById('vipGate');
+    if(gate){gate.querySelector('h2').textContent=tr('vipNeed');gate.querySelector('p').textContent=tr('vipNeedDesc');gate.querySelector('button').textContent=tr('buyVip')}
+
+    var menu=document.querySelectorAll('#profile .profileItem');
+    if(menu[0])menu[0].querySelector('span').textContent=tr('continue');
+    if(menu[1])menu[1].querySelector('span').textContent=tr('payments');
+    if(menu[2])menu[2].querySelector('span').textContent=tr('favorites');
+    if(menu[3]&&menu[3].id==='adminStatsBtn')menu[3].querySelector('span').textContent=tr('stats');
+    var supportIndex=menu.length-1;if(menu[supportIndex])menu[supportIndex].querySelector('span').textContent=tr('support');
+
+    var pt=document.querySelector('#payments .pageTitle');if(pt)pt.textContent=tr('paymentTitle');
+    var payTitles=document.querySelectorAll('#payments .payTitle');
+    if(payTitles[0])payTitles[0].textContent=tr('starsTitle');
+    if(payTitles[1])payTitles[1].textContent=tr('manualTitle');
+    var payDesc=document.querySelector('#payments .payCard .payDesc');if(payDesc)payDesc.textContent=tr('starsDesc');
+    document.getElementById('sendReceiptBtn').textContent=tr('sendReceipt');
+    document.getElementById('receiptStatus').textContent=tr('receiptHint');
+    document.getElementById('acceptTermsBtn').textContent=tr('termsAccept');
+
+    var st=document.querySelector('#support .pageTitle');if(st)st.textContent=tr('supportTitle');
+    document.getElementById('supportSend').textContent=tr('supportSend');
+    document.getElementById('supportStatus').textContent=tr('supportHint');
+    renderHome();renderCatalog();renderSearch();renderProfile();renderVipAccess();
+  }
+
+  function changeLanguage(lang){
+    if(lang!=='uz'&&lang!=='ru'&&lang!=='en')return;
+    if(!initData){applyLanguage(lang);show('home');return}
+    api('/app/api/language',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:lang})})
+      .then(function(r){if(r.ok){me.language=lang;applyLanguage(lang);show('home')}})
+      .catch(function(){});
+  }
 
   function api(url,opt){
     opt = opt || {};
@@ -973,7 +1132,7 @@ button{cursor:pointer}
   }
   function card(m){
     var poster=m.poster_url?'<img src="'+m.poster_url+'" loading="lazy" alt="">':'<div class="posterFallback">🎬</div>';
-    return '<div class="card movieCard" data-movie="'+m.id+'"><div class="poster">'+poster+badge(m)+'</div><div class="cardTitle">'+esc(m.title)+'</div><div class="cardMeta">👁 '+fmt(m.views)+' · '+m.episode_count+' qism</div></div>';
+    return '<div class="card movieCard" data-movie="'+m.id+'"><div class="poster">'+poster+badge(m)+'</div><div class="cardTitle">'+esc(m.title)+'</div><div class="cardMeta">👁 '+fmt(m.views)+' '+tr('views')+' · '+m.episode_count+' '+tr('episodes')+'</div></div>';
   }
 
   function show(id){
@@ -1009,7 +1168,7 @@ button{cursor:pointer}
     if(me&&me.authenticated&&me.vip){
       gate.style.display='none';
       grid.style.display='grid';
-      grid.innerHTML=vipMovies.length?vipMovies.map(card).join(''):'<div class="empty">VIP kinolar hozircha qo‘shilmagan.</div>';
+      grid.innerHTML=vipMovies.length?vipMovies.map(card).join(''):'<div class="empty">'+tr('noVipMovies')+'</div>';
     }else{
       grid.style.display='none';
       gate.style.display='block';
@@ -1031,7 +1190,7 @@ button{cursor:pointer}
       var hero=document.getElementById('hero');
       if(f.poster_url) hero.style.backgroundImage='url("'+f.poster_url+'")';
       document.getElementById('heroTitle').textContent=f.title;
-      document.getElementById('heroMeta').textContent='👁 '+fmt(f.views)+' ko‘rish · 🎞 '+f.episode_count+' qism'+(f.badge?' · 🔥 '+f.badge:'')+(f.is_vip?' · 💎 VIP':'');
+      document.getElementById('heroMeta').textContent='👁 '+fmt(f.views)+' '+tr('views')+' · 🎞 '+f.episode_count+' '+tr('episodes')+(f.badge?' · 🔥 '+f.badge:'')+(f.is_vip?' · 💎 VIP':'');
       document.getElementById('heroDesc').textContent=f.description||'AIKINOUZ premium kino kolleksiyasi.';
     }
   }
@@ -1039,12 +1198,12 @@ button{cursor:pointer}
   function renderCatalog(){
     var q=document.getElementById('searchInput').value.trim();
     var list=filtered(movies,catalogFilter,q);
-    document.getElementById('catalogGrid').innerHTML=list.length?list.map(card).join(''):'<div class="empty">Kino topilmadi.</div>';
+    document.getElementById('catalogGrid').innerHTML=list.length?list.map(card).join(''):'<div class="empty">'+tr('noMovies')+'</div>';
   }
   function renderSearch(){
     var q=document.getElementById('searchOnly').value.trim();
     var list=filtered(movies,'all',q);
-    document.getElementById('searchGrid').innerHTML=list.length?list.map(card).join(''):'<div class="empty">Kino topilmadi.</div>';
+    document.getElementById('searchGrid').innerHTML=list.length?list.map(card).join(''):'<div class="empty">'+tr('noMovies')+'</div>';
   }
 
   function openMovie(id){
@@ -1054,7 +1213,7 @@ button{cursor:pointer}
       if(m._http){throw new Error('movie')}
       var fav=me.favorite_ids && me.favorite_ids.indexOf(m.id)>=0;
       var poster=m.poster_url?'<img src="'+m.poster_url+'" alt="">':'<div class="posterFallback">🎬</div>';
-      var eps=(m.episodes||[]).map(function(e,i){return '<div class="episode"><span><b>'+e.number+'-QISM</b></span><button class="epOpen" data-index="'+i+'">▶ Tomosha</button></div>'}).join('');
+      var eps=(m.episodes||[]).map(function(e,i){var epLabel=appLang==='ru'?e.number+'-СЕРИЯ':(appLang==='en'?'EPISODE '+e.number:e.number+'-QISM');return '<div class="episode"><span><b>'+epLabel+'</b></span><button class="epOpen" data-index="'+i+'">'+tr('watchNow')+'</button></div>'}).join('');
       document.getElementById('detailContent').innerHTML=
         '<div class="detailPoster">'+poster+'</div>'+
         '<div class="detailBody"><h1>'+esc(m.title)+'</h1>'+
@@ -1186,9 +1345,9 @@ button{cursor:pointer}
     var u=me.user||{};
     var statsBtn=document.getElementById('adminStatsBtn');
     if(statsBtn)statsBtn.style.display=me.is_admin?'flex':'none';
-    cardEl.innerHTML='<div class="profileName">'+esc((u.first_name||'')+' '+(u.last_name||''))+'</div><div class="status">'+(me.vip?'💎 VIP ACTIVE':'✨ STANDARD')+(me.continue?' · ▶ '+esc(me.continue.movie_title)+' '+me.continue.episode_number+'-qism':'')+'</div>';
+    cardEl.innerHTML='<div class="profileName">'+esc((u.first_name||'')+' '+(u.last_name||''))+'</div><div class="status">'+(me.vip?tr('vipActive'):tr('standard'))+(me.continue?' · ▶ '+esc(me.continue.movie_title)+' '+me.continue.episode_number:'')+'</div>';
     var fav=movies.filter(function(m){return (me.favorite_ids||[]).indexOf(m.id)>=0});
-    favEl.innerHTML=fav.length?fav.map(card).join(''):'<div class="empty">Hozircha sevimli kinolar yo‘q.</div>';
+    favEl.innerHTML=fav.length?fav.map(card).join(''):'<div class="empty">'+tr('noFav')+'</div>';
   }
 
   function loadAdminStats(){
@@ -1257,15 +1416,15 @@ button{cursor:pointer}
         var plans=(info.manual.plans||[]);
         selectedManualDays=plans.length?Number(plans[0].days):0;
         var planButtons=plans.map(function(p){
-          var label=p.days===180?'6 oy':(p.days===365?'1 yil':p.days+' kun');
+          var label=p.days===180?tr('months6'):(p.days===365?tr('year1'):p.days+' '+tr('days'));
           return '<button class="starPlan manualPlan '+(Number(p.days)===selectedManualDays?'active':'')+'" data-manual-days="'+p.days+'"><span>💳 '+label+'</span><span>'+moneyUzs(p.price_uzs)+'</span></button>';
         }).join('');
         manual.innerHTML=
-          '<div class="payDesc">VIP paketini tanlang:</div>'+
+          '<div class="payDesc">'+tr('choosePlan')+'</div>'+
           '<div class="starPlans">'+planButtons+'</div>'+
           '<div class="cardNumber">'+esc(info.manual.card_number)+'</div>'+
-          '<div class="payDesc">Karta egasi: <b>'+esc(info.manual.card_holder)+'</b></div>'+
-          '<div class="payDesc">Tanlangan paket summasini kartaga o‘tkazing, so‘ng chek rasmini yuboring.</div>';
+          '<div class="payDesc">'+tr('cardOwner')+' <b>'+esc(info.manual.card_holder)+'</b></div>'+
+          '<div class="payDesc">'+tr('receiptInstruction')+'</div>';
         document.getElementById('receiptInput').style.display='block';
         document.getElementById('sendReceiptBtn').style.display='block';
       }else{
@@ -1342,6 +1501,11 @@ button{cursor:pointer}
       if(r.ok){box.value='';st.textContent='✅ Xabaringiz adminga yuborildi.'} else st.textContent='Xabar yuborilmadi. Qayta urinib ko‘ring.';
     }).catch(function(){st.textContent='Xabar yuborilmadi. Internetni tekshiring.'}).finally(function(){btn.disabled=false;btn.textContent='📨 XABARNI YUBORISH'});
   }
+
+  document.getElementById('langBtn').addEventListener('click',function(){show('language')});
+  document.querySelectorAll('[data-language]').forEach(function(btn){
+    btn.addEventListener('click',function(){changeLanguage(btn.getAttribute('data-language'))});
+  });
 
   document.addEventListener('click',function(e){
     var open=e.target.closest('[data-open]');
@@ -1441,8 +1605,9 @@ button{cursor:pointer}
   Promise.all([api('/app/api/catalog'),api('/app/api/me')]).then(function(res){
     movies=res[0].movies||[];
     me=res[1]||{authenticated:false,favorite_ids:[]};
+    appLang=(me.language==='ru'||me.language==='en')?me.language:'uz';
     if(me.authenticated&&me.user&&me.user.first_name)document.getElementById('avatar').textContent=me.user.first_name.charAt(0).toUpperCase();
-    renderHome();renderCatalog();renderSearch();renderProfile();
+    applyLanguage(appLang);
   }).catch(function(){
     document.getElementById('trendRow').innerHTML='<div class="empty">Kinolarni yuklab bo‘lmadi. Appni qayta oching.</div>';
   });
