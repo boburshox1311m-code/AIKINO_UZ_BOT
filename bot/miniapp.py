@@ -123,7 +123,7 @@ async def api_movie(request: web.Request) -> web.Response:
     if resume:
         data["resume"] = {
             "episode_id": int(resume["episode_id"]),
-            "current_time": float(resume["current_time"] or 0),
+            "current_time": float(resume["position_seconds"] or 0),
             "duration": float(resume["duration"] or 0),
             "last_watched_at": resume["last_watched_at"].isoformat(),
         }
