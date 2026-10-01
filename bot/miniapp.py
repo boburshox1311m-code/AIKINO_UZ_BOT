@@ -1375,7 +1375,11 @@ button{cursor:pointer}
         '<div id="recommendGrid" class="recommendGrid"></div></section>';
 
       currentMovieData=m;
-      var recs=movies.filter(function(x){return x.id!==m.id && (!x.is_vip || me.vip || me.is_admin)}).slice(0,8);
+      var recs=movies.filter(function(x){
+        if(x.id===m.id)return false;
+        if(m.is_vip)return !!x.is_vip;
+        return !x.is_vip;
+      }).slice(0,8);
       var recGrid=document.getElementById('recommendGrid');
       if(recGrid)recGrid.innerHTML=recs.length?recs.map(card).join(''):'<div class="empty">'+tr('noMovies')+'</div>';
       var first=(m.episodes||[])[0];
