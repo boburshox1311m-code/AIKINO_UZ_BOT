@@ -129,6 +129,7 @@ class AdminFlow(StatesGroup):
     manual_card_holder = State()
     manual_price_uzs = State()
     manual_vip_days = State()
+    manual_vip_plans = State()
     stars_plans = State()
 
 
@@ -1807,6 +1808,14 @@ async def admin_stars_plans_save(message: Message, state: FSMContext, db: Databa
     await message.answer("✅ Stars paketlari saqlandi.", reply_markup=stars_admin_back_markup())
 
 
+def manual_plan_label(days: int) -> str:
+    if days == 180:
+        return "6 oy"
+    if days == 365:
+        return "1 yil"
+    return f"{days} kun"
+
+
 def manual_payment_back_markup():
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⬅️ Karta to‘lov sozlamalari", callback_data="adm:manualpay")
@@ -1823,6 +1832,10 @@ async def render_manual_payment_admin(
     digits = "".join(ch for ch in settings["card_number"] if ch.isdigit())
     grouped = " ".join(digits[i:i + 4] for i in range(0, len(digits), 4)) or "Kiritilmagan"
     holder = settings["card_holder"] or "Kiritilmagan"
+    plans_text = "\n".join(
+        f"• {manual_plan_label(days)} — {format_number(price)} so‘m"
+        for days, price in settings["plans"]
+    )
     rows = [
         [InlineKeyboardButton(
             text="⛔️ Karta to‘lovini o‘chirish" if settings["enabled"] else "✅ Karta to‘lovini yoqish",
@@ -1830,8 +1843,7 @@ async def render_manual_payment_admin(
         )],
         [InlineKeyboardButton(text="💳 Karta raqamini o‘zgartirish", callback_data="adm:manualcard")],
         [InlineKeyboardButton(text="👤 Karta egasini o‘zgartirish", callback_data="adm:manualholder")],
-        [InlineKeyboardButton(text="💰 VIP narxini o‘zgartirish", callback_data="adm:manualprice")],
-        [InlineKeyboardButton(text="⏳ VIP muddatini o‘zgartirish", callback_data="adm:manualdays")],
+        [InlineKeyboardButton(text="📦 VIP paketlari va narxlari", callback_data="adm:manualplans")],
     ]
     if payment_url:
         rows.append([InlineKeyboardButton(text="🌐 To‘lov sahifasini ochish", url=payment_url)])
@@ -1841,10 +1853,9 @@ async def render_manual_payment_admin(
         "💳 <b>Karta to‘lov sozlamalari</b>\n\n"
         f"Holati: <b>{status}</b>\n"
         f"Karta: <code>{escape(grouped)}</code>\n"
-        f"Karta egasi: <b>{escape(holder)}</b>\n"
-        f"Narx: <b>{format_number(settings['price_uzs'])} so‘m</b>\n"
-        f"VIP muddati: <b>{settings['vip_days']} kun</b>\n\n"
-        "Chek kelganda bank ilovasida pul tushganini tekshirib tasdiqlang.",
+        f"Karta egasi: <b>{escape(holder)}</b>\n\n"
+        f"<b>VIP paketlari:</b>\n{plans_text}\n\n"
+        "Chek kelganda tanlangan paket, summa va foydalanuvchi ID birga ko‘rinadi.",
         InlineKeyboardMarkup(inline_keyboard=rows),
     )
 
@@ -1878,6 +1889,64 @@ async def admin_manual_payment_toggle(
     await db.set_setting("manual_payments_enabled", "false" if settings["enabled"] else "true")
     await record_admin_action(db, call.from_user, "💳 Karta to‘lovi holati o‘zgartirildi", "O‘chirildi" if settings["enabled"] else "Yoqildi")
     await render_manual_payment_admin(call, db, payment_url)
+
+
+@router.callback_query(F.data == "adm:manualplans")
+async def admin_manual_plans_prompt(
+    call: CallbackQuery,
+    state: FSMContext,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    await state.set_state(AdminFlow.manual_vip_plans)
+    await safe_edit(
+        call,
+        "📦 <b>Karta VIP paketlari</b>\n\n"
+        "Har bir paketni <code>kun:narx</code> ko‘rinishida yozing.\n"
+        "Masalan: <code>10:25000, 20:40000, 30:55000, 180:250000, 365:450000</code>\n\n"
+        "Bu faqat format namunasi — narxlarni o‘zingiz belgilaysiz.\n"
+        "6 oy = 180 kun, 1 yil = 365 kun.",
+        cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.manual_vip_plans, F.text)
+async def admin_manual_plans_save(
+    message: Message,
+    state: FSMContext,
+    db: Database,
+    admin_id: int,
+):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    plans = []
+    try:
+        for item in message.text.split(","):
+            days_text, price_text = item.strip().split(":", 1)
+            days, price = int(days_text), int(price_text)
+            if not 1 <= days <= 3650 or not 1000 <= price <= 1_000_000_000:
+                raise ValueError
+            plans.append((days, price))
+    except ValueError:
+        return await message.answer(
+            "Format noto‘g‘ri. Masalan: <code>10:25000, 20:40000, 30:55000, 180:250000, 365:450000</code>",
+            reply_markup=cancel_kb(),
+        )
+    if not plans or len(plans) > 10 or len({days for days, _ in plans}) != len(plans):
+        return await message.answer(
+            "1–10 ta takrorlanmagan paket kiriting.",
+            reply_markup=cancel_kb(),
+        )
+    await db.set_manual_vip_plans(plans)
+    await record_admin_action(
+        db,
+        message.from_user,
+        "📦 Karta VIP paketlari yangilandi",
+        ", ".join(f"{manual_plan_label(d)}={format_number(p)} so‘m" for d, p in plans),
+    )
+    await state.clear()
+    await message.answer("✅ Karta VIP paketlari saqlandi.", reply_markup=manual_payment_back_markup())
 
 
 @router.callback_query(F.data == "adm:manualcard")
@@ -1980,12 +2049,17 @@ async def admin_manual_payment_approve(
     payment = await db.review_manual_payment(payment_id, "approved")
     if not payment:
         return await call.answer("Bu chek oldin ko‘rib chiqilgan.", show_alert=True)
-    settings = await db.manual_payment_settings()
-    vip = await db.grant_vip(payment["user_id"], settings["vip_days"])
-    await record_admin_action(db, call.from_user, "✅ To‘lov cheki tasdiqlandi", f"Foydalanuvchi ID: {payment['user_id']}")
+    vip_days = int(payment["vip_days"] or 30)
+    vip = await db.grant_vip(payment["user_id"], vip_days)
+    await record_admin_action(
+        db,
+        call.from_user,
+        "✅ To‘lov cheki tasdiqlandi",
+        f"Foydalanuvchi ID: {payment['user_id']} · Paket: {manual_plan_label(vip_days)} · Summa: {format_number(payment['amount_uzs'])} so‘m",
+    )
     expires = vip["expires_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
     await call.message.edit_caption(
-        caption=(call.message.caption or "") + f"\n\n✅ <b>TASDIQLANDI</b>\nVIP: {expires} gacha",
+        caption=(call.message.caption or "") + f"\n\n✅ <b>TASDIQLANDI</b>\nPaket: {manual_plan_label(vip_days)}\nVIP: {expires} gacha",
         reply_markup=None,
     )
     await call.answer("VIP berildi.")
@@ -1993,6 +2067,7 @@ async def admin_manual_payment_approve(
         await bot.send_message(
             payment["user_id"],
             "✅ <b>To‘lovingiz tasdiqlandi!</b>\n\n"
+            f"📦 Paket: <b>{manual_plan_label(vip_days)}</b>\n"
             f"💎 VIP huquqi <b>{expires}</b> gacha faollashtirildi.",
             reply_markup=main_menu(),
         )
