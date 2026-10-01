@@ -1904,8 +1904,9 @@ async def admin_manual_plans_prompt(
         call,
         "📦 <b>Karta VIP paketlari</b>\n\n"
         "Har bir paketni <code>kun:narx</code> ko‘rinishida yozing.\n"
-        "Masalan: <code>10:25000, 20:40000, 30:55000, 180:250000, 365:450000</code>\n\n"
-        "Bu faqat format namunasi — narxlarni o‘zingiz belgilaysiz.\n"
+        "Hozirgi standart paketlar:\n"
+        "<code>10:15000, 29:25000, 30:40000, 180:200000, 365:400000</code>\n\n"
+        "Format: <code>kun:narx</code>.\n"
         "6 oy = 180 kun, 1 yil = 365 kun.",
         cancel_kb(),
     )
@@ -1930,7 +1931,7 @@ async def admin_manual_plans_save(
             plans.append((days, price))
     except ValueError:
         return await message.answer(
-            "Format noto‘g‘ri. Masalan: <code>10:25000, 20:40000, 30:55000, 180:250000, 365:450000</code>",
+            "Format noto‘g‘ri. Masalan: <code>10:15000, 29:25000, 30:40000, 180:200000, 365:400000</code>",
             reply_markup=cancel_kb(),
         )
     if not plans or len(plans) > 10 or len({days for days, _ in plans}) != len(plans):
