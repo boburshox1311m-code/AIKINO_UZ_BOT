@@ -1395,6 +1395,11 @@ button{cursor:pointer}
   var inlinePlayerMount=document.getElementById('inlinePlayerMount');
   var playerHome=playerOverlay;
   var playerIsInline=false;
+  var stageTapTimer=null;
+  var lastTapAt=0;
+  var lastTapSide='';
+  var accumulatedSkip=0;
+  var skipFeedbackTimer=null;
 
   function timeText(sec){
     sec=Math.max(0,Math.floor(Number(sec)||0));
@@ -1423,11 +1428,34 @@ button{cursor:pointer}
   function showPlayerControls(autoHide){
     playerControls.classList.remove('hiddenControls');
     clearTimeout(playerHideTimer);
-    if(autoHide){
+    if(autoHide && !playerVideo.paused){
       playerHideTimer=setTimeout(function(){
         if(!playlistDrawer.classList.contains('open')) playerControls.classList.add('hiddenControls');
-      },2000);
+      },2600);
     }
+  }
+  function hidePlayerControls(){
+    clearTimeout(playerHideTimer);
+    if(!playerVideo.paused && !playlistDrawer.classList.contains('open'))playerControls.classList.add('hiddenControls');
+  }
+  function flashSkip(side,total){
+    var el=document.getElementById(side==='left'?'skipFeedbackLeft':'skipFeedbackRight');
+    if(!el)return;
+    el.textContent=side==='left'?'↶ '+total:total+' ↷';
+    el.classList.add('show');
+    clearTimeout(skipFeedbackTimer);
+    skipFeedbackTimer=setTimeout(function(){el.classList.remove('show')},650);
+  }
+  function seekByDoubleTap(side){
+    var now=Date.now();
+    if(lastTapSide===side && now-lastTapAt<1300)accumulatedSkip+=10;
+    else accumulatedSkip=10;
+    lastTapSide=side;
+    lastTapAt=now;
+    if(side==='left')playerVideo.currentTime=Math.max(0,(playerVideo.currentTime||0)-10);
+    else playerVideo.currentTime=Math.min(playerVideo.duration||Infinity,(playerVideo.currentTime||0)+10);
+    flashSkip(side,accumulatedSkip);
+    showPlayerControls(true);
   }
   function renderPlaylist(){
     if(!currentMovieData)return;
@@ -1443,6 +1471,8 @@ button{cursor:pointer}
       return;
     }
     currentEpisodeIndex=index;
+    var nextBtn=document.getElementById('nextEpisode');
+    if(nextBtn)nextBtn.disabled=index>=currentMovieData.episodes.length-1;
     lastProgressSave=0;
     resumeAppliedEpisodeId=0;
     playerError.classList.remove('show');
@@ -1453,6 +1483,7 @@ button{cursor:pointer}
       document.getElementById('inlinePlayerMetaSub').textContent=(appLang==='ru'?'Серия ':appLang==='en'?'Episode ':'Qism ')+ep.number;
     }
     document.getElementById('progressBar').value=0;
+    document.getElementById('progressBar').style.setProperty('--progress-pct','0%');
     document.getElementById('currentTime').textContent='0:00';
     playerVideo.src=ep.stream_url;
     playerVideo.load();
@@ -1744,9 +1775,6 @@ button{cursor:pointer}
 
   document.getElementById('playerClose').addEventListener('click',function(e){e.stopPropagation();closePlayer()});
   document.getElementById('playPause').addEventListener('click',function(e){e.stopPropagation();togglePlay();showPlayerControls(true)});
-  document.getElementById('back10').addEventListener('click',function(e){e.stopPropagation();playerVideo.currentTime=Math.max(0,playerVideo.currentTime-10);showPlayerControls(true)});
-  document.getElementById('forward10').addEventListener('click',function(e){e.stopPropagation();playerVideo.currentTime=Math.min(playerVideo.duration||Infinity,playerVideo.currentTime+10);showPlayerControls(true)});
-  document.getElementById('prevEpisode').addEventListener('click',function(e){e.stopPropagation();if(currentEpisodeIndex>0)loadPlayerEpisode(currentEpisodeIndex-1,true)});
   document.getElementById('nextEpisode').addEventListener('click',function(e){e.stopPropagation();if(currentMovieData&&currentEpisodeIndex<currentMovieData.episodes.length-1)loadPlayerEpisode(currentEpisodeIndex+1,true)});
   document.getElementById('playlistToggle').addEventListener('click',function(e){e.stopPropagation();playlistDrawer.classList.add('open');showPlayerControls(false)});
   document.getElementById('playlistClose').addEventListener('click',function(e){e.stopPropagation();playlistDrawer.classList.remove('open');showPlayerControls(true)});
@@ -1773,10 +1801,25 @@ button{cursor:pointer}
       }).catch(function(){});
     }catch(err){}
   });
-  document.getElementById('videoStage').addEventListener('click',function(e){
+  document.getElementById('videoStage').addEventListener('pointerup',function(e){
     if(e.target.closest('button')||e.target.closest('input')||e.target.closest('.playlistDrawer'))return;
-    togglePlay();
-    showPlayerControls(true);
+    var rect=videoStage.getBoundingClientRect();
+    var side=(e.clientX-rect.left)<rect.width/2?'left':'right';
+    var now=Date.now();
+    if(stageTapTimer && lastTapSide===side && now-lastTapAt<320){
+      clearTimeout(stageTapTimer);
+      stageTapTimer=null;
+      seekByDoubleTap(side);
+      return;
+    }
+    lastTapSide=side;
+    lastTapAt=now;
+    clearTimeout(stageTapTimer);
+    stageTapTimer=setTimeout(function(){
+      stageTapTimer=null;
+      if(playerControls.classList.contains('hiddenControls'))showPlayerControls(true);
+      else hidePlayerControls();
+    },280);
   });
   playerVideo.addEventListener('play',function(){
     document.getElementById('playPause').textContent='❚❚';
@@ -1785,7 +1828,7 @@ button{cursor:pointer}
   });
   playerVideo.addEventListener('pause',function(){
     document.getElementById('playPause').textContent='▶';
-    showPlayerControls(true);
+    showPlayerControls(false);
     sendWatchProgress(true,'progress');
   });
   playerVideo.addEventListener('loadedmetadata',function(){
@@ -1804,7 +1847,12 @@ button{cursor:pointer}
   });
   playerVideo.addEventListener('timeupdate',function(){
     document.getElementById('currentTime').textContent=timeText(playerVideo.currentTime);
-    if(playerVideo.duration)document.getElementById('progressBar').value=Math.round((playerVideo.currentTime/playerVideo.duration)*1000);
+    if(playerVideo.duration){
+      var bar=document.getElementById('progressBar');
+      var pct=Math.max(0,Math.min(100,(playerVideo.currentTime/playerVideo.duration)*100));
+      bar.value=Math.round(pct*10);
+      bar.style.setProperty('--progress-pct',pct+'%');
+    }
     sendWatchProgress(false,'progress');
   });
   playerVideo.addEventListener('ended',function(){
@@ -1813,7 +1861,11 @@ button{cursor:pointer}
     else showPlayerControls(false);
   });
   playerVideo.addEventListener('error',function(){playerError.classList.add('show');showPlayerControls(false)});
-  document.getElementById('progressBar').addEventListener('input',function(e){if(playerVideo.duration)playerVideo.currentTime=(Number(e.target.value)/1000)*playerVideo.duration});
+  document.getElementById('progressBar').addEventListener('input',function(e){
+    var pct=Number(e.target.value)/10;
+    e.target.style.setProperty('--progress-pct',pct+'%');
+    if(playerVideo.duration)playerVideo.currentTime=(Number(e.target.value)/1000)*playerVideo.duration;
+  });
   document.addEventListener('visibilitychange',function(){
     if(document.hidden&&(playerOverlay.classList.contains('active')||inlinePlayerWrap.classList.contains('active'))){
       sendWatchProgress(true,'progress');
