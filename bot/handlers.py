@@ -22,6 +22,7 @@ from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton, Inlin
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import Database
+from .i18n import bt, normalize_lang
 from .storage import R2Storage
 
 router = Router()
@@ -34,11 +35,11 @@ ERROR_ALERT_COOLDOWN = 300
 _last_error_alerts: dict[str, float] = {}
 
 
-def subscription_kb(channel_id: str, target: str = "home"):
+def subscription_kb(channel_id: str, target: str = "home", lang: str = "uz"):
     username = channel_id.lstrip("@")
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 Kanalga obuna bo‘lish", url=f"https://t.me/{username}")],
-        [InlineKeyboardButton(text="✅ Obunani tekshirish", callback_data=f"subcheck:{target}")],
+        [InlineKeyboardButton(text=bt(lang, "subscribe"), url=f"https://t.me/{username}")],
+        [InlineKeyboardButton(text=bt(lang, "check_sub"), callback_data=f"subcheck:{target}")],
     ])
 
 
@@ -78,8 +79,11 @@ class SubscriptionMiddleware(BaseMiddleware):
         admin_id = data.get("admin_id")
         channel_id = data.get("channel_id")
         db: Database | None = data.get("db")
-        if user and user.id != admin_id and db:
+        lang = "uz"
+        if user and db:
             await db.track_user(user.id)
+            lang = await db.user_language(user.id)
+            data["lang"] = lang
         if not user or not channel_id or user.id == admin_id:
             return await handler(event, data)
         if isinstance(event, CallbackQuery) and (event.data or "").startswith("subcheck:"):
@@ -87,15 +91,10 @@ class SubscriptionMiddleware(BaseMiddleware):
         bot: Bot = data["bot"]
         if await is_channel_member(bot, channel_id, user.id):
             return await handler(event, data)
-        text = (
-            "🔒 <b>Botdan foydalanish uchun kanalga obuna bo‘ling.</b>\n\n"
-            "1. <b>📢 Kanalga obuna bo‘lish</b> tugmasini bosing.\n"
-            "2. Kanalga qo‘shiling.\n"
-            "3. Botga qaytib <b>✅ Obunani tekshirish</b>ni bosing."
-        )
-        markup = subscription_kb(channel_id, subscription_target(event))
+        text = bt(lang, "sub_required")
+        markup = subscription_kb(channel_id, subscription_target(event), lang)
         if isinstance(event, CallbackQuery):
-            await event.answer("Avval kanalga obuna bo‘ling.", show_alert=True)
+            await event.answer(bt(lang, "subscribe_first"), show_alert=True)
             await event.message.answer(text, reply_markup=markup)
             return None
         await event.answer(text, reply_markup=markup)
@@ -145,55 +144,69 @@ class MovieRequestFlow(StatesGroup):
     title = State()
 
 
-def build_welcome(first_name: str, vip_active: bool = False) -> str:
-    vip_line = "💎 <b>VIP ACTIVE</b>" if vip_active else "✨ <b>STANDARD</b>"
+def build_welcome(first_name: str, vip_active: bool = False, lang: str = "uz") -> str:
+    lang = normalize_lang(lang)
+    vip_line = bt(lang, "vip_active") if vip_active else bt(lang, "standard")
     return (
         "👑 <b>AIKINOUZ</b>\n"
-        "<b>PREMIUM KINO PLATFORMASI</b>\n\n"
-        f"Xush kelibsiz, <b>{escape(first_name or 'tomoshabin')}</b>!\n"
+        f"<b>{bt(lang, 'welcome_title')}</b>\n\n"
+        f"{bt(lang, 'welcome')}, <b>{escape(first_name or bt(lang, 'viewer'))}</b>!\n"
         f"{vip_line}\n\n"
-        "🎬 Kinolar • 🔥 Trend • 🆕 Yangiliklar\n"
-        "❤️ Sevimlilar • ▶️ Davom ettirish • 💎 VIP\n\n"
+        f"{bt(lang, 'welcome_line1')}\n"
+        f"{bt(lang, 'welcome_line2')}\n\n"
         "🏢 <b>AIKINOUZ</b> • President: <b>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</b>\n"
         "📧 boburshox1311m@gmail.com\n\n"
-        "<i>Tomosha qilish uchun bo‘limni tanlang:</i>"
+        f"{bt(lang, 'choose_section')}"
     )
 
 
-def main_menu(is_admin=False):
+def language_menu(lang: str = "uz"):
+    lang = normalize_lang(lang)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=("✅ " if lang == "uz" else "") + "🇺🇿 O‘zbekcha", callback_data="lang:uz"),
+            InlineKeyboardButton(text=("✅ " if lang == "ru" else "") + "🇷🇺 Русский", callback_data="lang:ru"),
+        ],
+        [InlineKeyboardButton(text=("✅ " if lang == "en" else "") + "🇬🇧 English", callback_data="lang:en")],
+        [InlineKeyboardButton(text=bt(lang, "home"), callback_data="home")],
+    ])
+
+
+def main_menu(is_admin=False, lang: str = "uz"):
+    lang = normalize_lang(lang)
     public_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
     mini_app_url = f"https://{public_domain}/app" if public_domain else None
     rows = []
     if mini_app_url:
         rows.append([
-            InlineKeyboardButton(text="👑 AIKINOUZ KINO PLATFORMASI 👑", web_app=WebAppInfo(url=mini_app_url))
+            InlineKeyboardButton(text=bt(lang, "platform"), web_app=WebAppInfo(url=mini_app_url))
         ])
     rows += [
         [
-            InlineKeyboardButton(text="🎬 Katalog", callback_data="movies:0"),
-            InlineKeyboardButton(text="🔥 Trend", callback_data="trending"),
+            InlineKeyboardButton(text=bt(lang, "catalog"), callback_data="movies:0"),
+            InlineKeyboardButton(text=bt(lang, "trend"), callback_data="trending"),
         ],
         [
-            InlineKeyboardButton(text="🆕 Yangi kinolar", callback_data="newmovies"),
-            InlineKeyboardButton(text="🎞 Yangi qismlar", callback_data="latest"),
+            InlineKeyboardButton(text=bt(lang, "new_movies"), callback_data="newmovies"),
+            InlineKeyboardButton(text=bt(lang, "new_episodes"), callback_data="latest"),
         ],
         [
-            InlineKeyboardButton(text="▶️ Davom", callback_data="continue"),
-            InlineKeyboardButton(text="❤️ Sevimlilar", callback_data="favorites"),
+            InlineKeyboardButton(text=bt(lang, "continue"), callback_data="continue"),
+            InlineKeyboardButton(text=bt(lang, "favorites"), callback_data="favorites"),
         ],
         [
-            InlineKeyboardButton(text="💎 VIP", callback_data="vip:0"),
-            InlineKeyboardButton(text="🔎 Qidiruv", callback_data="search"),
+            InlineKeyboardButton(text=bt(lang, "vip"), callback_data="vip:0"),
+            InlineKeyboardButton(text=bt(lang, "search"), callback_data="search"),
         ],
         [
-            InlineKeyboardButton(text="🎬 Kino so‘rash", callback_data="requestmovie"),
-            InlineKeyboardButton(text="👑 AIKINOUZ", callback_data="about"),
+            InlineKeyboardButton(text=bt(lang, "request_movie"), callback_data="requestmovie"),
+            InlineKeyboardButton(text=bt(lang, "about"), callback_data="about"),
         ],
+        [InlineKeyboardButton(text=bt(lang, "language"), callback_data="language")],
     ]
     if is_admin:
-        rows.append([InlineKeyboardButton(text="🔐 ADMIN PANEL", callback_data="admin")])
+        rows.append([InlineKeyboardButton(text=bt(lang, "admin"), callback_data="admin")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 async def delete_r2_safely(storage: R2Storage, key: str | None, context: str) -> None:
     if not key:
@@ -252,11 +265,11 @@ def admin_menu():
     ])
 
 
-def vip_locked_markup():
+def vip_locked_markup(lang: str = "uz"):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⭐ Stars bilan VIP olish", callback_data="vipbuy")],
-        [InlineKeyboardButton(text="🎬 Kino so‘rash", callback_data="requestmovie")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+        [InlineKeyboardButton(text=bt(lang, "vip_buy"), callback_data="vipbuy")],
+        [InlineKeyboardButton(text=bt(lang, "request_movie"), callback_data="requestmovie")],
+        [InlineKeyboardButton(text=bt(lang, "home"), callback_data="home")],
     ])
 
 
@@ -629,59 +642,69 @@ async def start(message: Message, state: FSMContext, admin_id: int, db: Database
                 return
         except ValueError:
             pass
+    lang = await db.user_language(message.from_user.id)
     vip_active = message.from_user.id == admin_id or await db.is_vip_user(message.from_user.id)
     await message.answer(
-        build_welcome(message.from_user.first_name, vip_active),
-        reply_markup=main_menu(is_admin(message.from_user.id, admin_id)),
+        build_welcome(message.from_user.first_name, vip_active, lang),
+        reply_markup=main_menu(is_admin(message.from_user.id, admin_id), lang),
     )
 
 
 @router.callback_query(F.data == "home")
 async def home(call: CallbackQuery, state: FSMContext, admin_id: int, db: Database):
     await state.clear()
+    lang = await db.user_language(call.from_user.id)
     vip_active = call.from_user.id == admin_id or await db.is_vip_user(call.from_user.id)
     await safe_edit(
         call,
-        build_welcome(call.from_user.first_name, vip_active),
-        main_menu(is_admin(call.from_user.id, admin_id)),
+        build_welcome(call.from_user.first_name, vip_active, lang),
+        main_menu(is_admin(call.from_user.id, admin_id), lang),
     )
 
 
-ABOUT_TEXT = (
-    "👑 <b>AIKINOUZ</b>\n"
-    "<b>PREMIUM KINO PLATFORMASI</b>\n\n"
-    "🏢 <b>Brend / loyiha:</b> AIKINOUZ\n"
-    "👑 <b>President:</b> BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI\n"
-    "📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com\n"
-    "🧩 <b>Platforma:</b> AIKINOUZ / AIKINO_UZ_BOT\n"
-    "🚀 <b>Versiya:</b> v1.0\n"
-    "\n"
-    "© 2026 AIKINOUZ. All rights reserved.\n"
-    "<i>Project owner / author: BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI.</i>"
-)
-
-
-def about_markup():
+def about_markup(lang: str = "uz"):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 @AIKINOUZ kanal", url="https://t.me/AIKINOUZ")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+        [InlineKeyboardButton(text=bt(lang, "about_channel"), url="https://t.me/AIKINOUZ")],
+        [InlineKeyboardButton(text=bt(lang, "home"), callback_data="home")],
     ])
 
 
 @router.callback_query(F.data == "about")
-async def about_project(call: CallbackQuery):
-    await safe_edit(call, ABOUT_TEXT, about_markup())
+async def about_project(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
+    await safe_edit(call, bt(lang, "about_text"), about_markup(lang))
 
 
 @router.message(Command("about"))
-async def about_project_command(message: Message):
-    await message.answer(ABOUT_TEXT, reply_markup=about_markup())
+async def about_project_command(message: Message, db: Database):
+    lang = await db.user_language(message.from_user.id)
+    await message.answer(bt(lang, "about_text"), reply_markup=about_markup(lang))
+
+
+@router.callback_query(F.data == "language")
+async def choose_language(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
+    await safe_edit(call, bt(lang, "choose_language"), language_menu(lang))
+
+
+@router.callback_query(F.data.startswith("lang:"))
+async def set_language(call: CallbackQuery, db: Database, admin_id: int):
+    lang = normalize_lang((call.data or "lang:uz").split(":", 1)[1])
+    await db.set_user_language(call.from_user.id, lang)
+    vip_active = call.from_user.id == admin_id or await db.is_vip_user(call.from_user.id)
+    await call.answer(bt(lang, "lang_saved"))
+    await safe_edit(
+        call,
+        build_welcome(call.from_user.first_name, vip_active, lang),
+        main_menu(is_admin(call.from_user.id, admin_id), lang),
+    )
 
 
 @router.callback_query(F.data == "cancel")
-async def cancel(call: CallbackQuery, state: FSMContext, admin_id: int):
+async def cancel(call: CallbackQuery, state: FSMContext, admin_id: int, db: Database):
     await state.clear()
-    await safe_edit(call, "Amal bekor qilindi.", main_menu(is_admin(call.from_user.id, admin_id)))
+    lang = await db.user_language(call.from_user.id)
+    await safe_edit(call, bt(lang, "cancelled"), main_menu(is_admin(call.from_user.id, admin_id), lang))
 
 
 @router.callback_query(F.data.startswith("subcheck:"))
@@ -694,22 +717,24 @@ async def check_subscription(
     channel_id: str | None,
 ):
     if not channel_id or not await is_channel_member(bot, channel_id, call.from_user.id):
+        lang = await db.user_language(call.from_user.id)
         if channel_id:
-            await call.answer("❌ Hali kanalga obuna bo‘lmagansiz.", show_alert=True)
+            await call.answer(bt(lang, "not_subscribed"), show_alert=True)
         else:
-            await call.answer("Kanal sozlamasi topilmadi.", show_alert=True)
+            await call.answer("Channel configuration not found.", show_alert=True)
         return
     await state.clear()
+    lang = await db.user_language(call.from_user.id)
     target = (call.data or "subcheck:home").split(":", 1)[1]
     if re.fullmatch(r"ep_\d+", target):
-        await safe_edit(call, "✅ <b>Obuna tasdiqlandi.</b>\n\nVideo ochilmoqda…")
+        await safe_edit(call, bt(lang, "sub_confirmed_video"))
         if not await send_episode_message(call.message, db, int(target[3:]), call.from_user.id, admin_id):
-            await call.message.answer("Video topilmadi.", reply_markup=main_menu())
+            await call.message.answer(bt(lang, "video_not_found"), reply_markup=main_menu(False, lang))
         return
     await safe_edit(
         call,
-        "✅ <b>Obuna tasdiqlandi!</b>\n\nKerakli bo‘limni tanlang:",
-        main_menu(is_admin(call.from_user.id, admin_id)),
+        bt(lang, "sub_confirmed"),
+        main_menu(is_admin(call.from_user.id, admin_id), lang),
     )
 
 
