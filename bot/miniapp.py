@@ -10,6 +10,8 @@ from urllib.parse import parse_qsl
 
 from aiohttp import ClientSession, web
 from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 
 from .database import Database
 from .storage import R2Storage
@@ -155,6 +157,158 @@ async def api_me(request: web.Request) -> web.Response:
             "duration_seconds": float(progress["duration_seconds"] or 0),
         } if progress else None,
     })
+
+
+async def api_payment_info(request: web.Request) -> web.Response:
+    user = _request_user(request)
+    if not user:
+        raise web.HTTPUnauthorized()
+    db: Database = request.app["db"]
+    user_id = int(user["id"])
+    manual = await db.manual_payment_settings()
+    stars_enabled = await db.stars_payments_enabled()
+    plans = await db.stars_plans()
+    accepted = await db.has_accepted_payment_terms(user_id)
+    subscription = await db.active_subscription_payment(user_id)
+    digits = "".join(ch for ch in manual["card_number"] if ch.isdigit())
+    grouped = " ".join(digits[i:i + 4] for i in range(0, len(digits), 4))
+    return web.json_response({
+        "stars": {
+            "enabled": stars_enabled,
+            "plans": [{"days": d, "stars": s, "recurring": d == 30} for d, s in plans],
+            "terms_accepted": accepted,
+            "subscription_active": bool(subscription),
+        },
+        "manual": {
+            "enabled": bool(manual["enabled"]),
+            "card_number": grouped if manual["enabled"] else "",
+            "card_holder": manual["card_holder"] if manual["enabled"] else "",
+            "price_uzs": int(manual["price_uzs"]),
+            "vip_days": int(manual["vip_days"]),
+        },
+    })
+
+
+async def api_accept_payment_terms(request: web.Request) -> web.Response:
+    user = _request_user(request)
+    if not user:
+        raise web.HTTPUnauthorized()
+    db: Database = request.app["db"]
+    await db.accept_payment_terms(int(user["id"]))
+    return web.json_response({"ok": True})
+
+
+async def api_stars_invoice(request: web.Request) -> web.Response:
+    user = _request_user(request)
+    if not user:
+        raise web.HTTPUnauthorized()
+    db: Database = request.app["db"]
+    bot: Bot = request.app["bot"]
+    user_id = int(user["id"])
+    if not await db.has_accepted_payment_terms(user_id):
+        return web.json_response({"error": "terms_required"}, status=403)
+    if not await db.stars_payments_enabled():
+        return web.json_response({"error": "stars_disabled"}, status=503)
+    try:
+        days = int(request.match_info["days"])
+    except ValueError:
+        raise web.HTTPBadRequest()
+    plans = await db.stars_plans()
+    match = next(((d, s) for d, s in plans if d == days), None)
+    if not match:
+        return web.json_response({"error": "plan_not_found"}, status=404)
+    _, stars = match
+    kind = "sub" if days == 30 else "once"
+    payload = f"vipstars:{user_id}:{days}:{stars}:{kind}"
+    kwargs = dict(
+        title=f"AIKINOUZ VIP — {days} kun",
+        description=(
+            "Har 30 kunda avtomatik yangilanadigan VIP obuna."
+            if kind == "sub" else f"{days} kunlik bir martalik VIP huquqi."
+        ),
+        payload=payload,
+        provider_token="",
+        currency="XTR",
+        prices=[LabeledPrice(label=f"VIP {days} kun", amount=stars)],
+    )
+    if kind == "sub":
+        kwargs["subscription_period"] = 2592000
+    invoice_url = await bot.create_invoice_link(**kwargs)
+    return web.json_response({
+        "invoice_url": invoice_url,
+        "days": days,
+        "stars": stars,
+        "recurring": kind == "sub",
+    })
+
+
+async def api_manual_receipt(request: web.Request) -> web.Response:
+    user = _request_user(request)
+    if not user:
+        raise web.HTTPUnauthorized()
+    db: Database = request.app["db"]
+    bot: Bot = request.app["bot"]
+    admin_id: int = request.app["admin_id"]
+    settings = await db.manual_payment_settings()
+    if not settings["enabled"]:
+        return web.json_response({"error": "manual_disabled"}, status=503)
+    try:
+        reader = await request.multipart()
+        field = await reader.next()
+    except Exception:
+        raise web.HTTPBadRequest()
+    if not field or field.name != "receipt" or not field.filename:
+        return web.json_response({"error": "receipt_required"}, status=400)
+    content_type = (field.headers.get("Content-Type") or "").lower()
+    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        return web.json_response({"error": "image_only"}, status=400)
+    chunks = []
+    total = 0
+    while True:
+        chunk = await field.read_chunk(size=256 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > 8 * 1024 * 1024:
+            return web.json_response({"error": "too_large"}, status=400)
+        chunks.append(chunk)
+    data = b"".join(chunks)
+    if not data:
+        return web.json_response({"error": "empty_file"}, status=400)
+
+    user_id = int(user["id"])
+    state, payment = await db.create_manual_payment_request(user_id, settings["price_uzs"])
+    if state == "duplicate":
+        return web.json_response({"error": "pending_exists"}, status=409)
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"adm:payapprove:{payment['id']}"),
+        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"adm:payreject:{payment['id']}"),
+    ]])
+    full_name = " ".join(
+        x for x in [user.get("first_name", ""), user.get("last_name", "")] if x
+    ).strip() or "Foydalanuvchi"
+    caption = (
+        "💳 <b>Mini App — yangi karta to‘lovi</b>\n\n"
+        f"👤 {html.escape(full_name)}\n"
+        f"🆔 Telegram ID: <code>{user_id}</code>\n"
+        f"💰 Summa: <b>{int(settings['price_uzs']):,} so‘m</b>\n"
+        f"⏳ VIP: <b>{int(settings['vip_days'])} kun</b>\n\n"
+        "Bank ilovasida pul tushganini tekshirib, qaror bering."
+    )
+    filename = field.filename or "receipt.jpg"
+    try:
+        sent = await bot.send_photo(
+            admin_id,
+            BufferedInputFile(data, filename=filename),
+            caption=caption,
+            reply_markup=markup,
+        )
+        await db.set_manual_payment_receipt(payment["id"], sent.photo[-1].file_id)
+    except TelegramAPIError:
+        await db.review_manual_payment(payment["id"], "rejected")
+        return web.json_response({"error": "send_failed"}, status=502)
+    return web.json_response({"ok": True, "payment_id": int(payment["id"])})
 
 
 async def api_toggle_favorite(request: web.Request) -> web.Response:
@@ -382,6 +536,10 @@ def register_miniapp_routes(app: web.Application) -> None:
     app.router.add_get("/app/api/catalog", api_catalog)
     app.router.add_get("/app/api/movie/{movie_id}", api_movie)
     app.router.add_get("/app/api/me", api_me)
+    app.router.add_get("/app/api/payment-info", api_payment_info)
+    app.router.add_post("/app/api/payment-terms/accept", api_accept_payment_terms)
+    app.router.add_post("/app/api/stars-invoice/{days}", api_stars_invoice)
+    app.router.add_post("/app/api/manual-receipt", api_manual_receipt)
     app.router.add_post("/app/api/favorite/{movie_id}", api_toggle_favorite)
     app.router.add_post("/app/api/support", api_support)
     app.router.add_post("/app/api/watch/{episode_id}", api_watch_progress)
@@ -470,7 +628,7 @@ button{cursor:pointer}
 .vipHero .big{font-size:48px}.vipHero h1{margin:8px 0 5px;color:#f6ca61}.benefits{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}.benefit{background:#111;border:1px solid #2e271d;border-radius:14px;padding:12px 7px;font-size:11px}.benefit b{display:block;font-size:22px;margin-bottom:5px}
 
 .profile{padding:10px 14px 24px}.profileCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0c0c0c);border-radius:20px;padding:18px}.profileName{font-size:21px;font-weight:950}.status{font-size:12px;color:#efc054;margin-top:5px}
-.profileMenu{margin-top:14px;display:grid;gap:8px}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}
+.profileMenu{margin-top:14px;display:grid;gap:8px}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.cardNumber{font-size:20px;letter-spacing:1.2px;font-weight:900;color:#ffe080;margin-top:13px}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
 .supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:64px;height:64px;border-radius:18px;border:1px solid #7b5b24}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
 .empty{padding:28px 14px;color:#888;text-align:center}
 
@@ -543,7 +701,6 @@ button{cursor:pointer}
       <div>👑 <b>President:</b> BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</div>
       <div>📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com</div>
       <div>🚀 <b>Versiya:</b> v1.0</div>
-      <div>🚀 <b>Versiya:</b> v1.0</div>
       <div>© 2026 AIKINOUZ. All rights reserved.</div>
     </div>
   </section>
@@ -587,11 +744,35 @@ button{cursor:pointer}
     <div id="profileCard" class="profileCard"></div>
     <div class="profileMenu">
       <button class="profileItem" id="continueBtn"><span>▶ Davom ettirish</span><span>›</span></button>
+      <button class="profileItem gold" data-open="payments"><span>⭐ VIP / To‘lov</span><span>›</span></button>
       <button class="profileItem" id="favoritesBtn"><span>♡ Sevimlilar</span><span>›</span></button>
       <button class="profileItem gold" data-open="support"><span>🛟 AIKINOUZ SUPPORT</span><span>›</span></button>
     </div>
     <div class="sectionHead" style="margin-top:20px"><h2>❤️ Sevimlilar</h2></div>
     <div id="favoritesGrid" class="catalog" style="padding:0"></div>
+  </div>
+</main>
+
+<main id="payments" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="profile">‹</button><div class="pageTitle">VIP / To‘lov</div></div>
+  <div class="payPage">
+    <section class="payCard">
+      <div class="payTitle">⭐ Telegram Stars orqali VIP</div>
+      <div class="payDesc">To‘lov Telegram ichida amalga oshadi. 30 kunlik paket avtomatik yangilanadigan obuna.</div>
+      <div id="starsTerms" class="termsBox" style="display:none">
+        To‘lovni bosish orqali VIP xizmatidan foydalanish shartlariga rozilik bildirasiz. Stars to‘lovlari Telegram orqali amalga oshiriladi; 30 kunlik paket avtomatik yangilanadi va bot orqali bekor qilinishi mumkin.
+        <button id="acceptTermsBtn" class="payPrimary">✅ Shartlarga roziman</button>
+      </div>
+      <div id="starPlans" class="starPlans"><div class="payStatus">Paketlar yuklanmoqda...</div></div>
+      <div id="starsStatus" class="payStatus"></div>
+    </section>
+    <section class="payCard">
+      <div class="payTitle">💳 Karta orqali VIP to‘lov</div>
+      <div id="manualPaymentBox"><div class="payStatus">Karta ma’lumoti yuklanmoqda...</div></div>
+      <input id="receiptInput" class="receiptInput" type="file" accept="image/jpeg,image/png,image/webp">
+      <button id="sendReceiptBtn" class="payPrimary">📤 Chek rasmini yuborish</button>
+      <div id="receiptStatus" class="payStatus">Chek sizning Telegram ID’ingiz bilan adminga yuboriladi.</div>
+    </section>
   </div>
 </main>
 
@@ -897,6 +1078,102 @@ button{cursor:pointer}
     favEl.innerHTML=fav.length?fav.map(card).join(''):'<div class="empty">Hozircha sevimli kinolar yo‘q.</div>';
   }
 
+  var paymentInfo=null;
+
+  function moneyUzs(n){
+    return Number(n||0).toLocaleString('en-GB').replace(/,/g,' ')+' so‘m';
+  }
+
+  function loadPayments(){
+    var plans=document.getElementById('starPlans');
+    var manual=document.getElementById('manualPaymentBox');
+    if(!initData){
+      plans.innerHTML='<div class="payStatus">VIP to‘lov Telegram Mini App ichida ishlaydi.</div>';
+      manual.innerHTML='<div class="payStatus">Telegram orqali kiring.</div>';
+      document.getElementById('sendReceiptBtn').disabled=true;
+      return;
+    }
+    api('/app/api/payment-info').then(function(info){
+      paymentInfo=info;
+      if(info.stars&&info.stars.enabled){
+        var terms=document.getElementById('starsTerms');
+        terms.style.display=info.stars.terms_accepted?'none':'block';
+        plans.innerHTML=(info.stars.plans||[]).map(function(p){
+          return '<button class="starPlan" data-star-days="'+p.days+'" '+(info.stars.terms_accepted?'':'disabled')+'><span>💎 '+p.days+' kun'+(p.recurring?' · Avtomatik':'')+'</span><span>⭐ '+p.stars+'</span></button>';
+        }).join('')||'<div class="payStatus">Stars paketlari mavjud emas.</div>';
+        document.getElementById('starsStatus').textContent=info.stars.subscription_active?'🔄 Faol avtomatik Stars obunangiz mavjud.':'';
+      }else{
+        document.getElementById('starsTerms').style.display='none';
+        plans.innerHTML='<div class="payStatus">Stars to‘lovi hozircha o‘chiq.</div>';
+      }
+      if(info.manual&&info.manual.enabled){
+        manual.innerHTML='<div class="payDesc">'+info.manual.vip_days+' kunlik VIP — <b>'+moneyUzs(info.manual.price_uzs)+'</b></div>'+
+          '<div class="cardNumber">'+esc(info.manual.card_number)+'</div>'+
+          '<div class="payDesc">Karta egasi: <b>'+esc(info.manual.card_holder)+'</b></div>'+
+          '<div class="payDesc">Pulni o‘tkazgach, pastdan chek rasmini tanlab yuboring.</div>';
+        document.getElementById('receiptInput').style.display='block';
+        document.getElementById('sendReceiptBtn').style.display='block';
+      }else{
+        manual.innerHTML='<div class="payStatus">Karta orqali to‘lov hozircha o‘chiq.</div>';
+        document.getElementById('receiptInput').style.display='none';
+        document.getElementById('sendReceiptBtn').style.display='none';
+      }
+    }).catch(function(){
+      plans.innerHTML='<div class="payStatus">To‘lov ma’lumotini yuklab bo‘lmadi.</div>';
+      manual.innerHTML='<div class="payStatus">To‘lov ma’lumotini yuklab bo‘lmadi.</div>';
+    });
+  }
+
+  function acceptPaymentTerms(){
+    var btn=document.getElementById('acceptTermsBtn');
+    btn.disabled=true;
+    api('/app/api/payment-terms/accept',{method:'POST'}).then(function(r){
+      if(r.ok)loadPayments();
+    }).finally(function(){btn.disabled=false});
+  }
+
+  function openStarsInvoice(days){
+    var st=document.getElementById('starsStatus');
+    st.textContent='⏳ To‘lov oynasi tayyorlanmoqda...';
+    api('/app/api/stars-invoice/'+days,{method:'POST'}).then(function(r){
+      if(r.error==='terms_required'){st.textContent='Avval to‘lov shartlariga rozilik bering.';loadPayments();return}
+      if(!r.invoice_url){st.textContent='To‘lov oynasi ochilmadi.';return}
+      if(tg&&typeof tg.openInvoice==='function'){
+        tg.openInvoice(r.invoice_url,function(status){
+          if(status==='paid'){
+            st.textContent='✅ To‘lov qabul qilindi. VIP faollashtirilmoqda...';
+            setTimeout(function(){
+              api('/app/api/me').then(function(v){me=v;renderProfile();});
+            },1200);
+          }else if(status==='cancelled'){st.textContent='To‘lov bekor qilindi.'}
+          else if(status==='failed'){st.textContent='To‘lov amalga oshmadi.'}
+        });
+      }else{
+        window.location.href=r.invoice_url;
+      }
+    }).catch(function(){st.textContent='Stars to‘lovini ochib bo‘lmadi.'});
+  }
+
+  function sendManualReceipt(){
+    var input=document.getElementById('receiptInput');
+    var status=document.getElementById('receiptStatus');
+    var btn=document.getElementById('sendReceiptBtn');
+    if(!input.files||!input.files[0]){status.textContent='Avval chek rasmini tanlang.';return}
+    var file=input.files[0];
+    if(file.size>8*1024*1024){status.textContent='Chek rasmi 8 MB dan kichik bo‘lsin.';return}
+    var form=new FormData();form.append('receipt',file,file.name);
+    btn.disabled=true;btn.textContent='⏳ YUBORILMOQDA...';status.textContent='Chek adminga yuborilmoqda...';
+    fetch('/app/api/manual-receipt',{method:'POST',headers:{'X-Telegram-Init-Data':initData},body:form})
+      .then(function(r){return r.json().then(function(j){j._http=r.status;return j})})
+      .then(function(r){
+        if(r.ok){input.value='';status.textContent='✅ Chek adminga yuborildi. Tasdiqlangach VIP avtomatik faollashadi.'}
+        else if(r.error==='pending_exists'){status.textContent='⏳ Oldingi chekingiz hali admin tomonidan tekshirilmoqda.'}
+        else if(r.error==='manual_disabled'){status.textContent='Karta orqali to‘lov vaqtincha o‘chiq.'}
+        else status.textContent='Chek yuborilmadi. Rasmni tekshirib qayta urinib ko‘ring.';
+      }).catch(function(){status.textContent='Chek yuborilmadi. Internetni tekshiring.'})
+      .finally(function(){btn.disabled=false;btn.textContent='📤 Chek rasmini yuborish'});
+  }
+
   function sendSupport(){
     var box=document.getElementById('supportMessage'), btn=document.getElementById('supportSend'), st=document.getElementById('supportStatus');
     var message=(box.value||'').trim();
@@ -910,7 +1187,9 @@ button{cursor:pointer}
 
   document.addEventListener('click',function(e){
     var open=e.target.closest('[data-open]');
-    if(open){var target=open.getAttribute('data-open');var f=open.getAttribute('data-filter');if(f)setFilter(f);show(target);return}
+    if(open){var target=open.getAttribute('data-open');var f=open.getAttribute('data-filter');if(f)setFilter(f);show(target);if(target==='payments')loadPayments();return}
+    var star=e.target.closest('[data-star-days]');
+    if(star){openStarsInvoice(Number(star.getAttribute('data-star-days')));return}
     var nav=e.target.closest('[data-nav]');
     if(nav){show(nav.getAttribute('data-nav'));return}
     var filter=e.target.closest('.filterBtn');
@@ -925,6 +1204,8 @@ button{cursor:pointer}
   document.getElementById('heroCatalog').addEventListener('click',function(){show('catalog')});
   document.getElementById('closeApp').addEventListener('click',function(){try{if(tg)tg.close();else history.back()}catch(e){history.back()}});
   document.getElementById('supportSend').addEventListener('click',sendSupport);
+  document.getElementById('acceptTermsBtn').addEventListener('click',acceptPaymentTerms);
+  document.getElementById('sendReceiptBtn').addEventListener('click',sendManualReceipt);
   document.getElementById('continueBtn').addEventListener('click',function(){
     if(!me.continue){alert('Hali tomosha boshlangan kino yo‘q.');return}
     api('/app/api/movie/'+me.continue.movie_id).then(function(m){
