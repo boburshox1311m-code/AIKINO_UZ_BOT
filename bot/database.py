@@ -149,12 +149,14 @@ class Database:
                 ('manual_card_number', ''),
                 ('manual_card_holder', ''),
                 ('vip_price_uzs', '50000'),
-                ('vip_days', '30')
+                ('vip_days', '30'),
+                ('manual_vip_plans', '')
             ON CONFLICT (key) DO NOTHING;
             CREATE TABLE IF NOT EXISTS manual_payment_requests (
                 id BIGSERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
                 amount_uzs BIGINT NOT NULL,
+                vip_days INTEGER NOT NULL DEFAULT 30,
                 receipt_file_id TEXT,
                 status TEXT NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending', 'approved', 'rejected')),
@@ -163,6 +165,7 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS manual_payment_requests_status_created_idx
                 ON manual_payment_requests(status, created_at DESC);
+            ALTER TABLE manual_payment_requests ADD COLUMN IF NOT EXISTS vip_days INTEGER NOT NULL DEFAULT 30;
             CREATE TABLE IF NOT EXISTS broadcast_history (
                 id BIGSERIAL PRIMARY KEY,
                 admin_id BIGINT NOT NULL,
@@ -967,6 +970,29 @@ class Database:
             FROM vip_payments
         """)
 
+    async def manual_vip_plans(self) -> list[tuple[int, int]]:
+        raw = await self.get_setting("manual_vip_plans", "")
+        plans: list[tuple[int, int]] = []
+        if raw:
+            try:
+                for item in raw.split(","):
+                    days_text, price_text = item.strip().split(":", 1)
+                    days, price = int(days_text), int(price_text)
+                    if 1 <= days <= 3650 and 1000 <= price <= 1_000_000_000:
+                        plans.append((days, price))
+            except (TypeError, ValueError):
+                plans = []
+        if plans:
+            return sorted(set(plans))
+        return [(
+            int(await self.get_setting("vip_days", "30")),
+            int(await self.get_setting("vip_price_uzs", "50000")),
+        )]
+
+    async def set_manual_vip_plans(self, plans: list[tuple[int, int]]):
+        value = ",".join(f"{days}:{price}" for days, price in sorted(set(plans)))
+        await self.set_setting("manual_vip_plans", value)
+
     async def manual_payment_settings(self):
         return {
             "enabled": (await self.get_setting("manual_payments_enabled", "false")).lower() == "true",
@@ -974,9 +1000,15 @@ class Database:
             "card_holder": await self.get_setting("manual_card_holder", ""),
             "price_uzs": int(await self.get_setting("vip_price_uzs", "50000")),
             "vip_days": int(await self.get_setting("vip_days", "30")),
+            "plans": await self.manual_vip_plans(),
         }
 
-    async def create_manual_payment_request(self, user_id: int, amount_uzs: int):
+    async def create_manual_payment_request(
+        self,
+        user_id: int,
+        amount_uzs: int,
+        vip_days: int = 30,
+    ):
         assert self.pool
         existing = await self.pool.fetchrow("""
             SELECT * FROM manual_payment_requests
@@ -986,10 +1018,10 @@ class Database:
         if existing:
             return "duplicate", existing
         request = await self.pool.fetchrow("""
-            INSERT INTO manual_payment_requests(user_id, amount_uzs)
-            VALUES($1, $2)
+            INSERT INTO manual_payment_requests(user_id, amount_uzs, vip_days)
+            VALUES($1, $2, $3)
             RETURNING *
-        """, user_id, amount_uzs)
+        """, user_id, amount_uzs, vip_days)
         return "created", request
 
     async def set_manual_payment_receipt(self, request_id: int, file_id: str):
