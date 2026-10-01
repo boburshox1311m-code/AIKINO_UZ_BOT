@@ -21,8 +21,9 @@ if [ "$LOCAL_ENABLED" = "1" ] || [ "$LOCAL_ENABLED" = "true" ] || [ "$LOCAL_ENAB
 
   export BOT_API_BASE_URL="http://127.0.0.1:8081"
 
-  mkdir -p /var/lib/telegram-bot-api /tmp/telegram-bot-api
-  chown -R telegram-bot-api:telegram-bot-api /var/lib/telegram-bot-api /tmp/telegram-bot-api
+  rm -rf /tmp/telegram-bot-api
+  mkdir -p /tmp/telegram-bot-api/data /tmp/telegram-bot-api/tmp
+  chown -R telegram-bot-api:telegram-bot-api /tmp/telegram-bot-api
 
   telegram-bot-api \
     --api-id="$TELEGRAM_API_ID" \
@@ -30,8 +31,8 @@ if [ "$LOCAL_ENABLED" = "1" ] || [ "$LOCAL_ENABLED" = "true" ] || [ "$LOCAL_ENAB
     --local \
     --http-port=8081 \
     --http-ip-address=127.0.0.1 \
-    --dir=/var/lib/telegram-bot-api \
-    --temp-dir=/tmp/telegram-bot-api \
+    --dir=/tmp/telegram-bot-api/data \
+    --temp-dir=/tmp/telegram-bot-api/tmp \
     --username=telegram-bot-api \
     --groupname=telegram-bot-api &
   BOT_API_PID=$!
