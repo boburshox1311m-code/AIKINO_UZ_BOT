@@ -394,52 +394,84 @@ async def send_episode_message(
 
 
 
-PAYMENT_TERMS_TEXT = (
-    "📄 <b>VIP to‘lov shartlari</b>\n\n"
-    "• VIP faqat tanlangan muddat davomida ishlaydi.\n"
-    "• 10 va 20 kunlik paketlar bir martalik.\n"
-    "• 30 kunlik paket avtomatik yangilanadigan obuna. Uni istalgan payt bekor qilish mumkin; "
-    "bekor qilinganda joriy muddat oxirigacha ishlaydi.\n"
-    "• To‘lov amalga oshgach VIP avtomatik yoqiladi.\n"
-    "• To‘lov muammosi uchun /paysupport buyrug‘idan foydalaning.\n"
-    "• Xarid bo‘yicha yordamni bot egasi beradi; Telegram yordam xizmati javobgar emas."
-)
+def payment_terms_text(lang: str) -> str:
+    if lang == "ru":
+        return (
+            "📄 <b>Условия VIP-оплаты</b>\n\n"
+            "• VIP действует только в течение выбранного периода.\n"
+            "• Краткосрочные пакеты оплачиваются один раз.\n"
+            "• 30-дневный пакет продлевается автоматически каждые 30 дней и может быть отменён в любое время.\n"
+            "• После успешной оплаты VIP активируется автоматически.\n"
+            "• По вопросам оплаты используйте /paysupport.\n"
+            "• Поддержку по покупке предоставляет владелец бота; Telegram не отвечает за эту покупку."
+        )
+    if lang == "en":
+        return (
+            "📄 <b>VIP payment terms</b>\n\n"
+            "• VIP works only for the selected period.\n"
+            "• Short-term plans are one-time purchases.\n"
+            "• The 30-day plan renews automatically every 30 days and can be cancelled at any time.\n"
+            "• VIP is activated automatically after successful payment.\n"
+            "• For payment help use /paysupport.\n"
+            "• Purchase support is provided by the bot owner; Telegram is not responsible for this purchase."
+        )
+    return (
+        "📄 <b>VIP to‘lov shartlari</b>\n\n"
+        "• VIP faqat tanlangan muddat davomida ishlaydi.\n"
+        "• Qisqa muddatli paketlar bir martalik.\n"
+        "• 30 kunlik paket har 30 kunda avtomatik yangilanadi va istalgan payt bekor qilinishi mumkin.\n"
+        "• To‘lov amalga oshgach VIP avtomatik yoqiladi.\n"
+        "• To‘lov muammosi uchun /paysupport buyrug‘idan foydalaning.\n"
+        "• Xarid bo‘yicha yordamni bot egasi beradi; Telegram yordam xizmati javobgar emas."
+    )
 
 
-def stars_plan_markup(plans, active_subscription=False):
+def stars_plan_markup(plans, active_subscription=False, lang: str = "uz"):
     rows = []
     for days, stars in plans:
-        suffix = " · avtomatik" if days == 30 else ""
+        suffix = (
+            " · автоматическое продление" if lang == "ru" and days == 30 else
+            " · auto-renew" if lang == "en" and days == 30 else
+            " · avtomatik" if days == 30 else ""
+        )
+        unit = "дней" if lang == "ru" else "days" if lang == "en" else "kun"
         rows.append([InlineKeyboardButton(
-            text=f"⭐ {days} kun — {stars} Stars{suffix}",
+            text=f"⭐ {days} {unit} — {stars} Stars{suffix}",
             callback_data=f"vipstar:{days}:{stars}",
         )])
     if active_subscription:
-        rows.append([InlineKeyboardButton(text="❌ Avtomatik obunani bekor qilish", callback_data="vipcancelstars")])
+        cancel_text = "❌ Отменить автопродление" if lang == "ru" else "❌ Cancel auto-renewal" if lang == "en" else "❌ Avtomatik obunani bekor qilish"
+        rows.append([InlineKeyboardButton(text=cancel_text, callback_data="vipcancelstars")])
+    terms_text = "📄 Условия оплаты" if lang == "ru" else "📄 Payment terms" if lang == "en" else "📄 To‘lov shartlari"
     rows.extend([
-        [InlineKeyboardButton(text="📄 To‘lov shartlari", callback_data="vipterms")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+        [InlineKeyboardButton(text=terms_text, callback_data="vipterms")],
+        [InlineKeyboardButton(text=bt(lang, "home"), callback_data="home")],
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def render_stars_payment(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
     if not await db.stars_payments_enabled():
-        return await safe_edit(call, "⭐ Stars orqali to‘lov vaqtincha o‘chirilgan.", vip_locked_markup())
+        text = "⭐ Оплата Stars временно отключена." if lang == "ru" else "⭐ Stars payments are temporarily disabled." if lang == "en" else "⭐ Stars orqali to‘lov vaqtincha o‘chirilgan."
+        return await safe_edit(call, text, vip_locked_markup(lang))
     plans = await db.stars_plans()
     vip = await db.vip_user(call.from_user.id)
     subscription = await db.active_subscription_payment(call.from_user.id)
     status = ""
     if vip:
         expires = vip["expires_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
-        status = f"\n\n💎 Hozirgi VIP muddati: <b>{expires}</b> gacha."
-    await safe_edit(
-        call,
-        "⭐ <b>Telegram Stars orqali VIP</b>\n\n"
-        "Paketni tanlang. 10/20 kunlik paketlar bir martalik, 30 kunlik paket esa har 30 kunda avtomatik yangilanadi."
-        + status,
-        stars_plan_markup(plans, bool(subscription)),
+        status = (
+            f"\n\n💎 VIP действует до: <b>{expires}</b>." if lang == "ru" else
+            f"\n\n💎 Current VIP expires: <b>{expires}</b>." if lang == "en" else
+            f"\n\n💎 Hozirgi VIP muddati: <b>{expires}</b> gacha."
+        )
+    intro = (
+        "⭐ <b>VIP через Telegram Stars</b>\n\nВыберите пакет. 30-дневный пакет продлевается автоматически." if lang == "ru" else
+        "⭐ <b>VIP with Telegram Stars</b>\n\nChoose a plan. The 30-day plan renews automatically." if lang == "en" else
+        "⭐ <b>Telegram Stars orqali VIP</b>\n\nPaketni tanlang. 30 kunlik paket har 30 kunda avtomatik yangilanadi."
     )
+    await safe_edit(call, intro + status, stars_plan_markup(plans, bool(subscription), lang))
 
 
 def parse_vip_payload(payload: str):
@@ -457,34 +489,41 @@ def parse_vip_payload(payload: str):
 
 
 @router.message(Command("terms"))
-async def payment_terms_command(message: Message):
-    await message.answer(PAYMENT_TERMS_TEXT)
+async def payment_terms_command(message: Message, db: Database):
+    lang = await db.user_language(message.from_user.id)
+    await message.answer(payment_terms_text(lang))
 
 
 @router.callback_query(F.data == "vipterms")
-async def payment_terms_callback(call: CallbackQuery):
+async def payment_terms_callback(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
+    agree = "✅ Я согласен" if lang == "ru" else "✅ I agree" if lang == "en" else "✅ Shartlarga roziman"
+    back = "⬅️ VIP оплата" if lang == "ru" else "⬅️ VIP payment" if lang == "en" else "⬅️ VIP to‘lov"
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Shartlarga roziman", callback_data="viptermsagree")],
-        [InlineKeyboardButton(text="⬅️ VIP to‘lov", callback_data="vipbuy")],
+        [InlineKeyboardButton(text=agree, callback_data="viptermsagree")],
+        [InlineKeyboardButton(text=back, callback_data="vipbuy")],
     ])
-    await safe_edit(call, PAYMENT_TERMS_TEXT, kb)
+    await safe_edit(call, payment_terms_text(lang), kb)
 
 
 @router.callback_query(F.data == "viptermsagree")
 async def payment_terms_agree(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
     await db.accept_payment_terms(call.from_user.id)
-    await call.answer("Shartlar qabul qilindi.")
+    await call.answer("✅")
     await render_stars_payment(call, db)
 
 
 @router.callback_query(F.data == "vipbuy")
 async def vip_buy(call: CallbackQuery, db: Database):
+    lang = await db.user_language(call.from_user.id)
     if not await db.has_accepted_payment_terms(call.from_user.id):
+        agree = "✅ Прочитал(а) и согласен(на)" if lang == "ru" else "✅ I have read and agree" if lang == "en" else "✅ O‘qidim va roziman"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ O‘qidim va roziman", callback_data="viptermsagree")],
-            [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="home")],
+            [InlineKeyboardButton(text=agree, callback_data="viptermsagree")],
+            [InlineKeyboardButton(text=bt(lang, "home"), callback_data="home")],
         ])
-        return await safe_edit(call, PAYMENT_TERMS_TEXT, kb)
+        return await safe_edit(call, payment_terms_text(lang), kb)
     await render_stars_payment(call, db)
 
 
