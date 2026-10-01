@@ -145,7 +145,7 @@ async def api_me(request: web.Request) -> web.Response:
             "last_name": user.get("last_name", ""),
             "username": user.get("username", ""),
         },
-        "vip": bool(vip),
+        "vip": bool(vip) or user_id == request.app["admin_id"],
         "vip_expires_at": vip["expires_at"].isoformat() if vip else None,
         "favorite_ids": [int(movie["id"]) for movie in favorites],
         "continue": {
@@ -626,6 +626,7 @@ button{cursor:pointer}
 
 .vipHero{margin:8px 14px 14px;border:1px solid #6b4e20;border-radius:24px;padding:24px;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0d0d0d;text-align:center}
 .vipHero .big{font-size:48px}.vipHero h1{margin:8px 0 5px;color:#f6ca61}.benefits{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}.benefit{background:#111;border:1px solid #2e271d;border-radius:14px;padding:12px 7px;font-size:11px}.benefit b{display:block;font-size:22px;margin-bottom:5px}
+.vipGate{margin:12px 14px 24px;border:1px solid #6b4e20;border-radius:22px;padding:22px 18px;text-align:center;background:linear-gradient(145deg,#181108,#0b0b0b);box-shadow:0 18px 50px #0008}.vipGate .vipLock{font-size:42px}.vipGate h2{margin:10px 0 7px;color:#f5ca62;font-size:21px}.vipGate p{margin:0;color:#b9b9b9;font-size:13px;line-height:1.55}
 
 .profile{padding:10px 14px 24px}.profileCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0c0c0c);border-radius:20px;padding:18px}.profileName{font-size:21px;font-weight:950}.status{font-size:12px;color:#efc054;margin-top:5px}
 .profileMenu{margin-top:14px;display:grid;gap:8px}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.cardNumber{font-size:20px;letter-spacing:1.2px;font-weight:900;color:#ffe080;margin-top:13px}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
@@ -728,6 +729,12 @@ button{cursor:pointer}
   <section class="vipHero">
     <div class="big">♛</div><h1>AIKINOUZ VIP</h1><div class="sub">PREMIUM KOLLEKSIYA</div>
     <div class="benefits"><div class="benefit"><b>💎</b>Eksklyuziv</div><div class="benefit"><b>🎬</b>Premium kino</div><div class="benefit"><b>⚡</b>Tez kirish</div></div>
+  </section>
+  <section id="vipGate" class="vipGate" style="display:none">
+    <div class="vipLock">🔒</div>
+    <h2>VIP kinolar uchun obuna kerak</h2>
+    <p>AIKINOUZ VIP bo‘limidagi premium kinolarni ko‘rish uchun VIP obuna sotib oling.</p>
+    <button class="payPrimary" data-open="payments">⭐ VIP OBUNA SOTIB OLISH</button>
   </section>
   <div id="vipGrid" class="catalog"></div>
 </main>
@@ -889,6 +896,7 @@ button{cursor:pointer}
     window.scrollTo(0,0);
     if(id==='profile') renderProfile();
     if(id==='search') renderSearch();
+    if(id==='vip') renderVipAccess();
   }
 
   function setFilter(f){
@@ -906,6 +914,20 @@ button{cursor:pointer}
     return list;
   }
 
+  function renderVipAccess(){
+    var gate=document.getElementById('vipGate');
+    var grid=document.getElementById('vipGrid');
+    var vipMovies=movies.filter(function(m){return m.is_vip});
+    if(me&&me.authenticated&&me.vip){
+      gate.style.display='none';
+      grid.style.display='grid';
+      grid.innerHTML=vipMovies.length?vipMovies.map(card).join(''):'<div class="empty">VIP kinolar hozircha qo‘shilmagan.</div>';
+    }else{
+      grid.style.display='none';
+      gate.style.display='block';
+    }
+  }
+
   function renderHome(){
     var trend=filtered(movies,'trend','').slice(0,8);
     var normal=movies.filter(function(m){return !m.is_vip}).slice(0,8);
@@ -913,7 +935,7 @@ button{cursor:pointer}
     document.getElementById('trendRow').innerHTML=(trend.length?trend:normal).map(card).join('');
     document.getElementById('newRow').innerHTML=normal.map(card).join('');
     document.getElementById('vipRow').innerHTML=vip.length?vip.map(card).join(''):'<div class="empty">VIP kinolar hozircha yo‘q.</div>';
-    document.getElementById('vipGrid').innerHTML=vip.length?vip.map(card).join(''):'<div class="empty">VIP kinolar hozircha qo‘shilmagan.</div>';
+    renderVipAccess();
 
     var f=(trend[0]||normal[0]||movies[0]);
     if(f){
@@ -1143,7 +1165,7 @@ button{cursor:pointer}
           if(status==='paid'){
             st.textContent='✅ To‘lov qabul qilindi. VIP faollashtirilmoqda...';
             setTimeout(function(){
-              api('/app/api/me').then(function(v){me=v;renderProfile();});
+              api('/app/api/me').then(function(v){me=v;renderProfile();renderVipAccess();});
             },1200);
           }else if(status==='cancelled'){st.textContent='To‘lov bekor qilindi.'}
           else if(status==='failed'){st.textContent='To‘lov amalga oshmadi.'}
