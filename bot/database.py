@@ -63,7 +63,7 @@ class Database:
                 user_id BIGINT NOT NULL,
                 movie_id BIGINT NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
                 episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
-                current_time DOUBLE PRECISION NOT NULL DEFAULT 0,
+                position_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
                 duration DOUBLE PRECISION NOT NULL DEFAULT 0,
                 last_watched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY(user_id, movie_id)
@@ -622,12 +622,12 @@ class Database:
         if movie_id:
             await self.pool.execute("""
                 INSERT INTO movie_watch_progress(
-                    user_id, movie_id, episode_id, current_time, duration, last_watched_at
+                    user_id, movie_id, episode_id, position_seconds, duration, last_watched_at
                 )
                 VALUES($1,$2,$3,$4,$5,NOW())
                 ON CONFLICT(user_id, movie_id) DO UPDATE SET
                     episode_id=EXCLUDED.episode_id,
-                    current_time=EXCLUDED.current_time,
+                    position_seconds=EXCLUDED.position_seconds,
                     duration=EXCLUDED.duration,
                     last_watched_at=NOW()
             """, user_id, movie_id, episode_id, position, duration)
@@ -697,14 +697,14 @@ class Database:
                  FROM app_watch_events a
                  JOIN episodes e ON e.id=a.episode_id
                  WHERE e.movie_id=$1) AS unique_viewers,
-                (SELECT COALESCE(AVG(p.current_time),0)
+                (SELECT COALESCE(AVG(p.position_seconds),0)
                  FROM movie_watch_progress p
                  WHERE p.movie_id=$1) AS average_watch_time,
                 (SELECT COUNT(*)
                  FROM movie_watch_progress p
                  WHERE p.movie_id=$1
                    AND p.duration>0
-                   AND p.current_time/p.duration>=0.90) AS completed_views
+                   AND p.position_seconds/p.duration>=0.90) AS completed_views
         """, movie_id)
 
     async def vip_movies_watch_stats(self, limit: int = 20):
@@ -728,9 +728,9 @@ class Database:
             ) v ON v.movie_id=m.id
             LEFT JOIN (
                 SELECT movie_id,
-                       AVG(current_time) AS average_watch_time,
+                       AVG(position_seconds) AS average_watch_time,
                        COUNT(*) FILTER (
-                           WHERE duration>0 AND current_time/duration>=0.90
+                           WHERE duration>0 AND position_seconds/duration>=0.90
                        ) AS completed_views
                 FROM movie_watch_progress
                 GROUP BY movie_id
