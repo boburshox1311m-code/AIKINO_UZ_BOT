@@ -331,6 +331,21 @@ def format_number(value: int) -> str:
     return f"{int(value):,}".replace(",", " ")
 
 
+def video_payload(message: Message):
+    media = message.video or message.document
+    if not media:
+        return None
+    mime = getattr(media, "mime_type", None) or ""
+    if message.document and not mime.startswith("video/"):
+        return None
+    return {
+        "file_id": media.file_id,
+        "file_unique_id": getattr(media, "file_unique_id", None),
+        "mime_type": mime or "video/mp4",
+        "file_size": getattr(media, "file_size", None),
+    }
+
+
 def popularity_badge(view_count: int) -> str:
     views = int(view_count or 0)
     if views >= 10000:
@@ -2266,25 +2281,44 @@ async def add_ep_wait_video(message: Message, state: FSMContext, db: Database, a
         return await message.answer("Bu qism raqami mavjud.", reply_markup=admin_menu())
     await state.update_data(episode_id=ep["id"], episode_number=int(message.text))
     await state.set_state(AdminFlow.episode_video)
-    await message.answer("📹 Endi videoni shu botga yuboring.\n\n<i>Video fayl sifatida emas, oddiy video ko‘rinishida yuboring.</i>", reply_markup=cancel_kb())
+    await message.answer(
+        "📹 Endi videoni shu botga yuboring.\n\n"
+        "<i>Katta to‘liq metrajli kino bo‘lsa oddiy video yoki video fayl (document) ko‘rinishida yuborishingiz mumkin. "
+        "Cloudflare R2 ga to‘liq o‘tgandan keyingina VIP Mini App’da aktiv bo‘ladi.</i>",
+        reply_markup=cancel_kb(),
+    )
 
 
-@router.message(AdminFlow.episode_video, F.video)
+@router.message(AdminFlow.episode_video, F.video | F.document)
 async def add_ep_video(
     message: Message, state: FSMContext, db: Database, admin_id: int, bot: Bot, channel_id: str | None
 ):
     if not is_admin(message.from_user.id, admin_id): return
+    media = video_payload(message)
+    if not media:
+        return await message.answer("Video formatidagi fayl yuboring.", reply_markup=cancel_kb())
     data = await state.get_data()
-    await db.set_episode_video(data["episode_id"], message.video.file_id, message.video.file_unique_id)
+    await db.set_episode_video(data["episode_id"], media["file_id"], media["file_unique_id"])
     await db.mark_episode_storage_pending(
         data["episode_id"],
-        message.video.mime_type,
-        message.video.file_size,
+        media["mime_type"],
+        media["file_size"],
     )
     await record_admin_action(db, message.from_user, "▶️ Qism videosi saqlandi", f"{data['episode_number']}-QISM")
     await state.clear()
-    await message.answer(f"✅ {data['episode_number']}-QISM videosi saqlandi va foydalanuvchilarga ochildi.", reply_markup=admin_menu())
     ep = await db.episode(data["episode_id"])
+    if ep and ep["movie_is_vip"]:
+        size_text = ""
+        if media["file_size"]:
+            size_text = f"\n💾 Fayl: {media['file_size'] / (1024 ** 3):.2f} GB"
+        await message.answer(
+            f"⏳ <b>{ep['movie_title']}</b> — {data['episode_number']}-QISM qabul qilindi.{size_text}\n\n"
+            "Cloudflare R2 ga yuklanmoqda. Upload to‘liq tugamaguncha Mini App VIP bo‘limida aktiv bo‘lmaydi. "
+            "Tugagach bot sizga alohida ✅ xabar yuboradi.",
+            reply_markup=admin_menu(),
+        )
+    else:
+        await message.answer(f"✅ {data['episode_number']}-QISM videosi saqlandi.", reply_markup=admin_menu())
     if channel_id and not ep["movie_is_vip"]:
         me = await bot.get_me()
         announcement = (
@@ -2347,24 +2381,27 @@ async def bulk_start_save(message: Message, state: FSMContext, admin_id: int):
     await message.answer(
         f"📹 Videolarni tartib bilan yuboring.\n\n"
         f"Birinchi video <b>{start_number}-QISM</b> bo‘ladi. Har bir videodan keyin qism raqami avtomatik oshadi.\n\n"
-        "<i>Videolarni oddiy video ko‘rinishida yuboring. Eski qismlarni yuklashda kanalga alohida e’lon chiqmaydi.</i>",
+        "<i>Videolarni oddiy video yoki video fayl (document) ko‘rinishida yuborish mumkin. Eski qismlarni yuklashda kanalga alohida e’lon chiqmaydi.</i>",
         reply_markup=bulk_upload_kb(),
     )
 
 
-@router.message(AdminFlow.bulk_videos, F.video)
+@router.message(AdminFlow.bulk_videos, F.video | F.document)
 async def bulk_video_save(message: Message, state: FSMContext, db: Database, admin_id: int):
     if not is_admin(message.from_user.id, admin_id):
         return
+    media = video_payload(message)
+    if not media:
+        return await message.answer("Video formatidagi fayl yuboring.", reply_markup=bulk_upload_kb())
     data = await state.get_data()
     number = data["next_episode_number"]
     ep = await db.upsert_episode(
-        data["movie_id"], number, message.video.file_id, message.video.file_unique_id
+        data["movie_id"], number, media["file_id"], media["file_unique_id"]
     )
     await db.mark_episode_storage_pending(
         ep["id"],
-        message.video.mime_type,
-        message.video.file_size,
+        media["mime_type"],
+        media["file_size"],
     )
     await record_admin_action(db, message.from_user, "📚 Ketma-ket qism yuklandi", f"{number}-QISM")
     uploaded_count = data["uploaded_count"] + 1
@@ -2592,7 +2629,7 @@ async def replace_video_prompt(call: CallbackQuery, state: FSMContext):
     await safe_edit(call, "Yangi videoni yuboring:", cancel_kb())
 
 
-@router.message(AdminFlow.replace_video, F.video)
+@router.message(AdminFlow.replace_video, F.video | F.document)
 async def replace_video_save(
     message: Message,
     state: FSMContext,
@@ -2601,14 +2638,17 @@ async def replace_video_save(
     storage: R2Storage,
 ):
     if not is_admin(message.from_user.id, admin_id): return
+    media = video_payload(message)
+    if not media:
+        return await message.answer("Video formatidagi fayl yuboring.", reply_markup=cancel_kb())
     data = await state.get_data()
     old_episode = await db.episode(data["episode_id"])
     old_r2_key = old_episode["r2_key"] if old_episode and "r2_key" in old_episode.keys() else None
-    await db.set_episode_video(data["episode_id"], message.video.file_id, message.video.file_unique_id)
+    await db.set_episode_video(data["episode_id"], media["file_id"], media["file_unique_id"])
     await db.mark_episode_storage_pending(
         data["episode_id"],
-        message.video.mime_type,
-        message.video.file_size,
+        media["mime_type"],
+        media["file_size"],
     )
     await delete_r2_safely(storage, old_r2_key, f"replace_episode:{data['episode_id']}")
     await record_admin_action(db, message.from_user, "📹 Qism videosi almashtirildi", f"Qism ID: {data['episode_id']}")
