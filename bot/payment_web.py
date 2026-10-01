@@ -47,10 +47,22 @@ async def health_check(request: web.Request) -> web.Response:
     try:
         assert db.pool
         await db.pool.fetchval("SELECT 1")
-    except Exception:
-        logging.getLogger(__name__).exception("Health check failed")
-        return web.json_response({"status": "unhealthy", "database": "error"}, status=503)
-    return web.json_response({"status": "ok", "database": "ok"})
+        storage_backlog = await db.storage_backlog_count()
+    except Exception as exc:
+        logging.getLogger(__name__).error(
+            "Health check failed: error_type=%s",
+            type(exc).__name__,
+        )
+        return web.json_response(
+            {"status": "unhealthy", "database": "error", "version": "v1.0"},
+            status=503,
+        )
+    return web.json_response({
+        "status": "ok",
+        "database": "ok",
+        "version": "v1.0",
+        "storage_backlog": storage_backlog,
+    })
 
 
 async def payment_page(request: web.Request) -> web.Response:
