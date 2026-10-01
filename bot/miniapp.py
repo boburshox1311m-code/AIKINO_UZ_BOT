@@ -1056,7 +1056,7 @@ button{cursor:pointer}
       chooseReceipt:'Avval chek rasmini tanlang.',chooseVipPlan:'Avval VIP paketini tanlang.',receiptTooLarge:'Chek rasmi 8 MB dan kichik bo‘lsin.',
       receiptSending:'Chek adminga yuborilmoqda...',receiptSent:'✅ Chek adminga yuborildi. Tasdiqlangach VIP avtomatik faollashadi.',
       pendingReceipt:'⏳ Oldingi chekingiz hali admin tomonidan tekshirilmoqda.',receiptFail:'Chek yuborilmadi. Rasmni tekshirib qayta urinib ko‘ring.',
-      messageShort:'Xabarni biroz to‘liqroq yozing.',messageSending:'Xabar yuborilmoqda...',messageSent:'✅ Xabaringiz adminga yuborildi.',messageFail:'Xabar yuborilmadi. Qayta urinib ko‘ring.'
+      messageShort:'Xabarni biroz to‘liqroq yozing.',messageSending:'Xabar yuborilmoqda...',messageSent:'✅ Xabaringiz adminga yuborildi.',messageFail:'Xabar yuborilmadi. Qayta urinib ko‘ring.',loadMore:'Yana yuklash'
     },
     ru:{
       home:'Главная',catalog:'Фильмы',search:'Поиск',vip:'VIP',profile:'Профиль',
@@ -1083,7 +1083,7 @@ button{cursor:pointer}
       chooseReceipt:'Сначала выберите фото чека.',chooseVipPlan:'Сначала выберите VIP-пакет.',receiptTooLarge:'Фото чека должно быть меньше 8 МБ.',
       receiptSending:'Чек отправляется администратору...',receiptSent:'✅ Чек отправлен. После подтверждения VIP активируется автоматически.',
       pendingReceipt:'⏳ Предыдущий чек ещё проверяется администратором.',receiptFail:'Не удалось отправить чек. Проверьте изображение и попробуйте снова.',
-      messageShort:'Напишите сообщение подробнее.',messageSending:'Сообщение отправляется...',messageSent:'✅ Сообщение отправлено администратору.',messageFail:'Не удалось отправить сообщение. Попробуйте ещё раз.'
+      messageShort:'Напишите сообщение подробнее.',messageSending:'Сообщение отправляется...',messageSent:'✅ Сообщение отправлено администратору.',messageFail:'Не удалось отправить сообщение. Попробуйте ещё раз.',loadMore:'Загрузить ещё'
     },
     en:{
       home:'Home',catalog:'Movies',search:'Search',vip:'VIP',profile:'Profile',
@@ -1110,12 +1110,15 @@ button{cursor:pointer}
       chooseReceipt:'Choose a receipt image first.',chooseVipPlan:'Choose a VIP plan first.',receiptTooLarge:'Receipt image must be under 8 MB.',
       receiptSending:'Sending receipt to admin...',receiptSent:'✅ Receipt sent. VIP will activate automatically after approval.',
       pendingReceipt:'⏳ Your previous receipt is still under review.',receiptFail:'Could not send the receipt. Check the image and try again.',
-      messageShort:'Please write a little more detail.',messageSending:'Sending message...',messageSent:'✅ Your message was sent to the admin.',messageFail:'Could not send the message. Try again.'
+      messageShort:'Please write a little more detail.',messageSending:'Sending message...',messageSent:'✅ Your message was sent to the admin.',messageFail:'Could not send the message. Try again.',loadMore:'Load more'
     }
   };
   function tr(k){return (I18N[appLang]&&I18N[appLang][k])||I18N.uz[k]||k}
 
   var catalogFilter = 'all';
+  var catalogOffset = 0;
+  var catalogPageSize = 36;
+  var catalogHasMore = false;
   var featuredId = 0;
   var currentMovieData = null;
   var currentEpisodeIndex = -1;
@@ -1185,6 +1188,7 @@ button{cursor:pointer}
     var st=document.querySelector('#support .pageTitle');if(st)st.textContent=tr('supportTitle');
     document.getElementById('supportSend').textContent=tr('supportSend');
     document.getElementById('supportStatus').textContent=tr('supportHint');
+    var lm=document.getElementById('loadMoreCatalog');if(lm)lm.textContent=tr('loadMore');
     renderHome();renderCatalog();renderSearch();renderProfile();renderVipAccess();
   }
 
@@ -1284,6 +1288,22 @@ button{cursor:pointer}
     var q=document.getElementById('searchInput').value.trim();
     var list=filtered(movies,catalogFilter,q);
     document.getElementById('catalogGrid').innerHTML=list.length?list.map(card).join(''):'<div class="empty">'+tr('noMovies')+'</div>';
+    var more=document.getElementById('loadMoreCatalog');
+    if(more)more.style.display=(catalogHasMore&&!q)?'block':'none';
+  }
+
+  function loadMoreCatalog(){
+    if(!catalogHasMore)return;
+    var btn=document.getElementById('loadMoreCatalog');
+    if(btn){btn.disabled=true;btn.textContent='…'}
+    api('/app/api/catalog?offset='+catalogOffset+'&limit='+catalogPageSize).then(function(r){
+      var incoming=r.movies||[];
+      var seen={};movies.forEach(function(m){seen[m.id]=true});
+      incoming.forEach(function(m){if(!seen[m.id]){movies.push(m);seen[m.id]=true}});
+      catalogOffset+=incoming.length;
+      catalogHasMore=!!r.has_more;
+      renderHome();renderCatalog();renderSearch();renderVipAccess();
+    }).finally(function(){if(btn){btn.disabled=false;btn.textContent=tr('loadMore')}});
   }
   function renderSearch(){
     var q=document.getElementById('searchOnly').value.trim();
@@ -1295,6 +1315,11 @@ button{cursor:pointer}
     show('detail');
     document.getElementById('detailContent').innerHTML='<div class="empty">Yuklanmoqda...</div>';
     api('/app/api/movie/'+id).then(function(m){
+      if(m.error==='vip_required'){
+        show('payments');
+        loadPayments();
+        return;
+      }
       if(m._http){throw new Error('movie')}
       var fav=me.favorite_ids && me.favorite_ids.indexOf(m.id)>=0;
       var poster=m.poster_url?'<img src="'+m.poster_url+'" alt="">':'<div class="posterFallback">🎬</div>';
@@ -1438,9 +1463,11 @@ button{cursor:pointer}
   function loadAdminStats(){
     var grid=document.getElementById('statsGrid');
     var top=document.getElementById('topMoviesStats');
+    var vipStats=document.getElementById('vipMoviesStats');
     if(!me.is_admin){
       grid.innerHTML='<div class="empty">Ruxsat yo‘q.</div>';
       top.innerHTML='';
+      if(vipStats)vipStats.innerHTML='';
       return;
     }
     grid.innerHTML='<div class="empty">Statistika yuklanmoqda...</div>';
@@ -1462,9 +1489,14 @@ button{cursor:pointer}
         return '<div class="topMovieRow"><span>'+(i+1)+'. '+esc(m.emoji||'🎬')+' '+esc(m.title)+'</span><span><b>'+fmt(m.views)+'</b> ko‘rish · '+fmt(m.viewers)+' odam</span></div>';
       }).join('');
       top.innerHTML=rows||'<div class="payStatus">Hozircha app ko‘rishlari yo‘q.</div>';
+      var vipRows=(s.vip_movies||[]).map(function(m){
+        return '<div class="vipStatsRow"><div><b>'+esc(m.title)+'</b></div><div class="vipStatsMeta">👁 '+fmt(m.views)+' · 👤 '+fmt(m.unique_viewers)+'<br>⏱ '+timeText(m.average_watch_time)+' · ✅ '+fmt(m.completed_views)+'</div></div>';
+      }).join('');
+      if(vipStats)vipStats.innerHTML=vipRows||'<div class="payStatus">Hozircha VIP kino ko‘rishlari yo‘q.</div>';
     }).catch(function(){
       grid.innerHTML='<div class="empty">Statistikani yuklab bo‘lmadi.</div>';
       top.innerHTML='';
+      if(vipStats)vipStats.innerHTML='';
     });
   }
 
@@ -1614,6 +1646,7 @@ button{cursor:pointer}
   });
 
   document.getElementById('searchInput').addEventListener('input',renderCatalog);
+  document.getElementById('loadMoreCatalog').addEventListener('click',loadMoreCatalog);
   document.getElementById('searchOnly').addEventListener('input',renderSearch);
   document.getElementById('heroWatch').addEventListener('click',function(){if(featuredId)openMovie(featuredId)});
   document.getElementById('heroCatalog').addEventListener('click',function(){show('catalog')});
@@ -1639,6 +1672,16 @@ button{cursor:pointer}
   document.getElementById('playlistToggle').addEventListener('click',function(e){e.stopPropagation();playlistDrawer.classList.add('open');showPlayerControls(false)});
   document.getElementById('playlistClose').addEventListener('click',function(e){e.stopPropagation();playlistDrawer.classList.remove('open');showPlayerControls(true)});
   document.getElementById('playlistItems').addEventListener('click',function(e){var b=e.target.closest('[data-play-index]');if(b){loadPlayerEpisode(Number(b.getAttribute('data-play-index')),true);playlistDrawer.classList.remove('open')}});
+  document.getElementById('volumeRange').addEventListener('input',function(e){
+    var v=Math.max(0,Math.min(1,Number(e.target.value)||0));
+    playerVideo.volume=v;playerVideo.muted=(v===0);
+    document.getElementById('muteToggle').textContent=(playerVideo.muted||v===0)?'🔇':(v<0.5?'🔉':'🔊');
+  });
+  document.getElementById('muteToggle').addEventListener('click',function(e){
+    e.stopPropagation();
+    playerVideo.muted=!playerVideo.muted;
+    document.getElementById('muteToggle').textContent=playerVideo.muted?'🔇':(playerVideo.volume<0.5?'🔉':'🔊');
+  });
   document.getElementById('playerFullscreen').addEventListener('click',function(e){
     e.stopPropagation();
     try{if(playerVideo.requestFullscreen)playerVideo.requestFullscreen();else if(playerVideo.webkitEnterFullscreen)playerVideo.webkitEnterFullscreen()}catch(err){}
@@ -1661,8 +1704,11 @@ button{cursor:pointer}
   playerVideo.addEventListener('loadedmetadata',function(){
     document.getElementById('durationTime').textContent=timeText(playerVideo.duration);
     var ep=currentMovieData&&currentEpisodeIndex>=0?(currentMovieData.episodes||[])[currentEpisodeIndex]:null;
-    if(ep&&me.continue&&me.continue.episode_id===ep.id&&resumeAppliedEpisodeId!==ep.id){
-      var resume=Number(me.continue.position_seconds||0);
+    var movieResume=currentMovieData&&currentMovieData.resume?currentMovieData.resume:null;
+    var resume=0;
+    if(ep&&movieResume&&movieResume.episode_id===ep.id)resume=Number(movieResume.current_time||0);
+    else if(ep&&me.continue&&me.continue.episode_id===ep.id)resume=Number(me.continue.position_seconds||0);
+    if(ep&&resumeAppliedEpisodeId!==ep.id){
       if(resume>2 && resume<Math.max(0,(playerVideo.duration||0)-5)){
         try{playerVideo.currentTime=resume}catch(e){}
       }
@@ -1688,8 +1734,10 @@ button{cursor:pointer}
     }
   });
 
-  Promise.all([api('/app/api/catalog'),api('/app/api/me')]).then(function(res){
+  Promise.all([api('/app/api/catalog?offset=0&limit='+catalogPageSize),api('/app/api/me')]).then(function(res){
     movies=res[0].movies||[];
+    catalogOffset=movies.length;
+    catalogHasMore=!!res[0].has_more;
     me=res[1]||{authenticated:false,favorite_ids:[]};
     appLang=(me.language==='ru'||me.language==='en')?me.language:'uz';
     if(me.authenticated&&me.user&&me.user.first_name)document.getElementById('avatar').textContent=me.user.first_name.charAt(0).toUpperCase();
