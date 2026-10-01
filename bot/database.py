@@ -437,13 +437,28 @@ class Database:
             UPDATE episodes
             SET storage_status='pending',
                 storage_error=NULL,
-                storage_attempts=0
+                storage_attempts=CASE
+                    WHEN storage_attempts >= 8 THEN 0
+                    ELSE storage_attempts
+                END
             WHERE r2_key IS NULL
               AND file_id IS NOT NULL
-              AND storage_attempts >= 8
+              AND (
+                    storage_attempts >= 8
+                    OR storage_status='uploading'
+              )
             RETURNING id
         """)
         return len(rows)
+
+    async def storage_backlog_count(self) -> int:
+        assert self.pool
+        return int(await self.pool.fetchval("""
+            SELECT COUNT(*)
+            FROM episodes
+            WHERE file_id IS NOT NULL
+              AND r2_key IS NULL
+        """) or 0)
 
     async def adjacent_episode(self, movie_id: int, number: int, direction: str):
         assert self.pool
