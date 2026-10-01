@@ -542,6 +542,8 @@ button{cursor:pointer}
     <div class="publicCompanyInfo">
       <div>👑 <b>President:</b> BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</div>
       <div>📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com</div>
+      <div>🚀 <b>Versiya:</b> v1.0</div>
+      <div>🚀 <b>Versiya:</b> v1.0</div>
       <div>© 2026 AIKINOUZ. All rights reserved.</div>
     </div>
   </section>
@@ -602,6 +604,7 @@ button{cursor:pointer}
       <div>👑 <b>President:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</div>
       <div>📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com</div>
       <div>🧩 <b>Platforma:</b> AIKINOUZ / AIKINO_UZ_BOT</div>
+      <div>🚀 <b>Versiya:</b> v1.0</div>
       <div>© 2026 AIKINOUZ. All rights reserved.</div>
       <div><b>Project owner / author:</b><br>BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</div>
     </div>
