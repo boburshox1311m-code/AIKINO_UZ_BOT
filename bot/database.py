@@ -94,6 +94,25 @@ class Database:
                 ON episode_views(user_id, viewed_at DESC);
             CREATE INDEX IF NOT EXISTS episode_views_episode_date_idx
                 ON episode_views(episode_id, viewed_at DESC);
+            CREATE TABLE IF NOT EXISTS app_visits (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                visited_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS app_visits_user_date_idx
+                ON app_visits(user_id, visited_at DESC);
+            CREATE INDEX IF NOT EXISTS app_visits_date_idx
+                ON app_visits(visited_at DESC);
+            CREATE TABLE IF NOT EXISTS app_watch_events (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+                viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS app_watch_events_user_date_idx
+                ON app_watch_events(user_id, viewed_at DESC);
+            CREATE INDEX IF NOT EXISTS app_watch_events_episode_date_idx
+                ON app_watch_events(episode_id, viewed_at DESC);
             CREATE TABLE IF NOT EXISTS movie_requests (
                 id BIGSERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
@@ -804,6 +823,76 @@ class Database:
             user_id,
             episode_id,
         )
+
+    async def record_app_visit_once(self, user_id: int):
+        assert self.pool
+        return await self.pool.execute("""
+            INSERT INTO app_visits(user_id)
+            SELECT $1
+            WHERE NOT EXISTS (
+                SELECT 1 FROM app_visits
+                WHERE user_id=$1
+                  AND visited_at > NOW() - INTERVAL '30 minutes'
+            )
+        """, user_id)
+
+    async def record_app_watch_once(self, user_id: int, episode_id: int):
+        assert self.pool
+        return await self.pool.execute("""
+            INSERT INTO app_watch_events(user_id, episode_id)
+            SELECT $1, $2
+            WHERE NOT EXISTS (
+                SELECT 1 FROM app_watch_events
+                WHERE user_id=$1
+                  AND episode_id=$2
+                  AND viewed_at > NOW() - INTERVAL '6 hours'
+            )
+        """, user_id, episode_id)
+
+    async def app_statistics(self, admin_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT
+                (SELECT COUNT(DISTINCT user_id) FROM app_visits WHERE user_id<>$1) AS total_users,
+                (SELECT COUNT(*) FROM app_visits WHERE user_id<>$1) AS total_sessions,
+                (SELECT COUNT(DISTINCT user_id) FROM app_visits
+                    WHERE user_id<>$1
+                      AND (visited_at AT TIME ZONE 'Europe/London')::date =
+                          (NOW() AT TIME ZONE 'Europe/London')::date) AS today_users,
+                (SELECT COUNT(*) FROM app_visits
+                    WHERE user_id<>$1
+                      AND (visited_at AT TIME ZONE 'Europe/London')::date =
+                          (NOW() AT TIME ZONE 'Europe/London')::date) AS today_sessions,
+                (SELECT COUNT(DISTINCT user_id) FROM app_visits
+                    WHERE user_id<>$1 AND visited_at >= NOW() - INTERVAL '7 days') AS users_7d,
+                (SELECT COUNT(DISTINCT user_id) FROM app_visits
+                    WHERE user_id<>$1 AND visited_at >= NOW() - INTERVAL '30 days') AS users_30d,
+                (SELECT COUNT(DISTINCT user_id) FROM app_watch_events WHERE user_id<>$1) AS total_viewers,
+                (SELECT COUNT(*) FROM app_watch_events WHERE user_id<>$1) AS total_views,
+                (SELECT COUNT(DISTINCT user_id) FROM app_watch_events
+                    WHERE user_id<>$1
+                      AND (viewed_at AT TIME ZONE 'Europe/London')::date =
+                          (NOW() AT TIME ZONE 'Europe/London')::date) AS today_viewers,
+                (SELECT COUNT(*) FROM app_watch_events
+                    WHERE user_id<>$1
+                      AND (viewed_at AT TIME ZONE 'Europe/London')::date =
+                          (NOW() AT TIME ZONE 'Europe/London')::date) AS today_views,
+                (SELECT COUNT(*) FROM vip_users WHERE expires_at>NOW() AND user_id<>$1) AS active_vips
+        """, admin_id)
+
+    async def app_top_movies(self, admin_id: int, limit: int = 5):
+        assert self.pool
+        return await self.pool.fetch("""
+            SELECT m.id, m.title, m.emoji, COUNT(*) AS view_count,
+                   COUNT(DISTINCT v.user_id) AS unique_viewers
+            FROM app_watch_events v
+            JOIN episodes e ON e.id=v.episode_id
+            JOIN movies m ON m.id=e.movie_id
+            WHERE v.user_id<>$1
+            GROUP BY m.id, m.title, m.emoji
+            ORDER BY view_count DESC, unique_viewers DESC, m.title
+            LIMIT $2
+        """, admin_id, limit)
 
     async def statistics(self, admin_id: int):
         assert self.pool
