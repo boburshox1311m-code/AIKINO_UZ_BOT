@@ -688,11 +688,11 @@ async def brand_logo(request: web.Request) -> web.Response:
 <text x="256" y="405" text-anchor="middle" font-family="Arial,Helvetica,sans-serif"
       font-size="56" font-weight="900" letter-spacing="6" fill="url(#gold)" filter="url(#glow)">AIKINOUZ</text>
 </svg>"""
-    return web.Response(text=svg, content_type="image/svg+xml", headers={"Cache-Control": "public, max-age=3600"})
+    return web.Response(text=svg, content_type="image/svg+xml", headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"})
 
 
 def register_miniapp_routes(app: web.Application) -> None:
-    app.router.add_get("/app/logo.svg", brand_logo)
+    app.router.add_get("/app/logo.svg?v=official4", brand_logo)
     app.router.add_get("/app", app_page)
     app.router.add_get("/app/", app_page)
     app.router.add_get("/app/api/catalog", api_catalog)
@@ -718,7 +718,7 @@ MINI_APP_HTML = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#050505">
-<link rel="icon" href="/app/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/app/logo.svg?v=official4" type="image/svg+xml">
 <title>AIKINOUZ</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -735,7 +735,7 @@ button{cursor:pointer}
 .top{position:sticky;top:0;z-index:30;background:#050505f3;backdrop-filter:blur(22px);border-bottom:1px solid #1f1a13;padding:10px 14px}
 .brand{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .brandmark{display:flex;align-items:center;gap:10px}
-.brandLogo{width:46px;height:46px;border-radius:14px;object-fit:cover;border:1px solid #6b4e20;background:#050505;box-shadow:0 0 28px #d99d2d33}
+.brandLogo{width:50px;height:50px;border-radius:50%;object-fit:contain;border:1px solid #7d5a20;background:radial-gradient(circle,#15100a 0%,#050505 72%);padding:2px;box-shadow:0 0 24px #d99d2d40,0 0 0 1px #2b1d0b inset}
 .crown{width:42px;height:42px;border-radius:14px;background:linear-gradient(145deg,#ffe58a,#a96913);display:grid;place-items:center;color:#1b1102;font-size:23px;box-shadow:0 0 28px #d99d2d33}
 .logo{font-weight:950;letter-spacing:1.1px;color:#f6ca63;font-size:20px}
 .sub{font-size:10px;color:#a88b54;letter-spacing:1.8px}
@@ -795,7 +795,7 @@ button{cursor:pointer}
 
 .profile{padding:10px 14px 24px}.profileCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0c0c0c);border-radius:20px;padding:18px}.profileName{font-size:21px;font-weight:950}.status{font-size:12px;color:#efc054;margin-top:5px}
 .profileMenu{margin-top:14px;display:grid;gap:8px}.statsWrap{padding:8px 14px 28px}.statsGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.statCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:17px;padding:14px}.statValue{font-size:27px;font-weight:950;color:#f5ca62}.statLabel{font-size:11px;color:#aaa;margin-top:4px}.statsSection{margin-top:14px;border:1px solid #32291e;background:#0d0d0d;border-radius:18px;padding:15px}.statsSection h3{margin:0 0 10px;color:#f5ca62}.topMovieRow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #222;font-size:12px}.topMovieRow:last-child{border-bottom:0}.statsRefresh{width:100%;margin-top:12px;border:0;border-radius:13px;padding:12px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.manualPlan.active{outline:2px solid #f5ca62;background:#211708}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.cardNumber{font-size:20px;letter-spacing:1.2px;font-weight:900;color:#ffe080;margin-top:13px}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
-.supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:64px;height:64px;border-radius:18px;border:1px solid #7b5b24}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.presidentRow{display:flex;align-items:center;gap:10px}.presidentMiniLogo{width:42px;height:42px;flex:none;border-radius:50%;object-fit:cover;border:1px solid #8a6227;background:#070604;box-shadow:0 0 18px #d99d2d2e}.presidentText{min-width:0}.presidentLabel{display:block;color:#f0c45d;font-weight:900;font-size:12px;letter-spacing:.2px}.presidentName{display:block;margin-top:2px;color:#eee;font-size:12px;line-height:1.35}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
+.supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:76px;height:76px;border-radius:50%;object-fit:contain;padding:3px;background:radial-gradient(circle,#171009,#050505 74%);border:1px solid #8a6326;box-shadow:0 0 24px #d99d2d38}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.presidentRow{display:flex;align-items:center;gap:10px}.presidentMiniLogo{width:44px;height:44px;flex:none;border-radius:50%;object-fit:contain;padding:2px;border:1px solid #8a6227;background:radial-gradient(circle,#171009,#050505 75%);box-shadow:0 0 18px #d99d2d38}.presidentText{min-width:0}.presidentLabel{display:block;color:#f0c45d;font-weight:900;font-size:12px;letter-spacing:.2px}.presidentName{display:block;margin-top:2px;color:#eee;font-size:12px;line-height:1.35}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
 .empty{padding:28px 14px;color:#888;text-align:center}
 
 .inlinePlayerWrap{display:none;position:sticky;top:72px;z-index:25;background:#000;border-bottom:1px solid #2f2618;box-shadow:0 18px 38px #000b}
@@ -879,7 +879,7 @@ button{cursor:pointer}
 <div class="app">
 <header class="top">
   <div class="brand">
-    <div class="brandmark"><img class="brandLogo" src="/app/logo.svg" alt="AIKINOUZ logo"><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div>
+    <div class="brandmark"><img class="brandLogo" src="/app/logo.svg?v=official4" alt="AIKINOUZ logo"><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div>
     <div class="headRight"><button id="langBtn" class="langBtn">🌐 UZ</button><div id="avatar" class="avatar">A</div><button id="closeApp" class="closeBtn">×</button></div>
   </div>
 </header>
@@ -899,9 +899,9 @@ button{cursor:pointer}
   <section class="section"><div class="sectionHead"><h2>🆕 Yangi kinolar</h2><button data-open="catalog" data-filter="new">Barchasi ›</button></div><div id="newRow" class="row"></div></section>
   <section class="section"><div class="sectionHead"><h2>💎 VIP tanlov</h2><button data-open="vip">Ko‘rish ›</button></div><div id="vipRow" class="row"></div></section>
   <section class="publicCompany">
-    <div class="publicCompanyHead"><img src="/app/logo.svg" alt="AIKINOUZ"><div><div class="publicCompanyTitle">AIKINOUZ</div><div class="publicCompanySub">PREMIUM KINO PLATFORMASI</div></div></div>
+    <div class="publicCompanyHead"><img src="/app/logo.svg?v=official4" alt="AIKINOUZ"><div><div class="publicCompanyTitle">AIKINOUZ</div><div class="publicCompanySub">PREMIUM KINO PLATFORMASI</div></div></div>
     <div class="publicCompanyInfo">
-      <div class="presidentRow"><img class="presidentMiniLogo" src="/app/logo.svg" alt="AIKINOUZ"><div class="presidentText"><span class="presidentLabel">AIKINOUZ KOMPANIYA PRESIDENT:</span><span class="presidentName">BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</span></div></div>
+      <div class="presidentRow"><img class="presidentMiniLogo" src="/app/logo.svg?v=official4" alt="AIKINOUZ"><div class="presidentText"><span class="presidentLabel">AIKINOUZ KOMPANIYA PRESIDENT:</span><span class="presidentName">BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</span></div></div>
       <div>📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com</div>
       <div>🚀 <b>Versiya:</b> v1.0</div>
       <div>© 2026 AIKINOUZ. All rights reserved.</div>
@@ -1023,10 +1023,10 @@ button{cursor:pointer}
 <main id="support" class="page">
   <div class="pageTop"><button class="backBtn" data-open="profile">‹</button><div class="pageTitle">Support</div></div>
   <section class="supportCard">
-    <div class="publicCompanyHead"><img src="/app/logo.svg" alt="AIKINOUZ"><div><div class="supportTitle">AIKINOUZ</div><div class="sub">PREMIUM KINO PLATFORMASI</div></div></div>
+    <div class="publicCompanyHead"><img src="/app/logo.svg?v=official4" alt="AIKINOUZ"><div><div class="supportTitle">AIKINOUZ</div><div class="sub">PREMIUM KINO PLATFORMASI</div></div></div>
     <div class="supportMeta">
       <div>🏢 <b>Brend / loyiha:</b> AIKINOUZ</div>
-      <div class="presidentRow"><img class="presidentMiniLogo" src="/app/logo.svg" alt="AIKINOUZ"><div class="presidentText"><span class="presidentLabel">AIKINOUZ KOMPANIYA PRESIDENT:</span><span class="presidentName">BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</span></div></div>
+      <div class="presidentRow"><img class="presidentMiniLogo" src="/app/logo.svg?v=official4" alt="AIKINOUZ"><div class="presidentText"><span class="presidentLabel">AIKINOUZ KOMPANIYA PRESIDENT:</span><span class="presidentName">BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</span></div></div>
       <div>📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com</div>
       <div>🧩 <b>Platforma:</b> AIKINOUZ / AIKINO_UZ_BOT</div>
       <div>🚀 <b>Versiya:</b> v1.0</div>
