@@ -692,7 +692,7 @@ async def brand_logo(request: web.Request) -> web.Response:
 
 
 def register_miniapp_routes(app: web.Application) -> None:
-    app.router.add_get("/app/logo.svg?v=official4", brand_logo)
+    app.router.add_get("/app/logo.svg", brand_logo)
     app.router.add_get("/app", app_page)
     app.router.add_get("/app/", app_page)
     app.router.add_get("/app/api/catalog", api_catalog)
