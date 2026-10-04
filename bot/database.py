@@ -140,6 +140,8 @@ class Database:
                 ON movie_requests(status, created_at DESC);
             CREATE UNIQUE INDEX IF NOT EXISTS movie_requests_pending_user_title_uq
                 ON movie_requests(user_id, LOWER(title)) WHERE status='pending';
+            ALTER TABLE movie_requests ADD COLUMN IF NOT EXISTS replied_at TIMESTAMPTZ;
+            ALTER TABLE movie_requests ADD COLUMN IF NOT EXISTS last_reply_text TEXT;
             CREATE TABLE IF NOT EXISTS vip_users (
                 user_id BIGINT PRIMARY KEY,
                 expires_at TIMESTAMPTZ NOT NULL,
@@ -967,6 +969,15 @@ class Database:
         return await self.pool.fetchrow(
             "SELECT * FROM movie_requests WHERE id=$1", request_id
         )
+
+    async def mark_movie_request_replied(self, request_id: int, reply_text: str):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            UPDATE movie_requests
+            SET replied_at=NOW(), last_reply_text=$2
+            WHERE id=$1 AND status='pending'
+            RETURNING *
+        """, request_id, reply_text.strip())
 
     async def complete_movie_request(self, request_id: int):
         assert self.pool
