@@ -1810,7 +1810,7 @@ async def admin_movie_request_custom_reply(
             await bot.edit_message_text(
                 chat_id=int(origin_chat_id),
                 message_id=int(origin_message_id),
-                text=movie_request_admin_text(request, replied=(result == "sent")),
+                text=movie_request_admin_text(request, replied=True if result == "sent" else None),
                 reply_markup=movie_request_admin_kb(request_id, page, include_back=True),
             )
         except TelegramAPIError:
