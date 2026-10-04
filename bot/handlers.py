@@ -130,6 +130,7 @@ class AdminFlow(StatesGroup):
     manual_vip_days = State()
     manual_vip_plans = State()
     stars_plans = State()
+    request_reply = State()
 
 
 class PaymentSupportFlow(StatesGroup):
@@ -223,6 +224,76 @@ async def delete_r2_safely(storage: R2Storage, key: str | None, context: str) ->
 
 def cancel_kb():
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")]])
+
+
+def movie_request_admin_kb(request_id: int, page: int = 0, include_back: bool = False):
+    rows = [[
+        InlineKeyboardButton(text="✅ Joylandi", callback_data=f"adm:reqdone:{request_id}:{page}"),
+        InlineKeyboardButton(text="✍️ Javob yozish", callback_data=f"adm:reqreply:{request_id}:{page}"),
+        InlineKeyboardButton(text="🗑 O‘chirish", callback_data=f"adm:reqdelete:{request_id}:{page}"),
+    ]]
+    if include_back:
+        rows.append([InlineKeyboardButton(text="⬅️ So‘rovlar", callback_data=f"adm:requests:{page}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+REQUEST_REPLY_TEMPLATES = {
+    "soon": "Bu kino tez orada joylanadi.",
+    "unfinished": "Bu kino hali tugamagan. Yangi qismlari chiqqanda joylaymiz.",
+    "notfound": "Bu kino hozircha topilmadi.",
+    "posted": "Bu kino platformaga joylandi. Qidiruv orqali topishingiz mumkin.",
+    "vip": "Bu kino tez orada VIP bo‘limga joylanadi.",
+}
+
+
+def movie_request_reply_kb(request_id: int, page: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎬 Tez orada joylanadi", callback_data=f"adm:reqreplyq:{request_id}:soon:{page}")],
+        [InlineKeyboardButton(text="⏳ Kino hali tugamagan", callback_data=f"adm:reqreplyq:{request_id}:unfinished:{page}")],
+        [InlineKeyboardButton(text="🔎 Hozircha topilmadi", callback_data=f"adm:reqreplyq:{request_id}:notfound:{page}")],
+        [InlineKeyboardButton(text="✅ Kino joylandi", callback_data=f"adm:reqreplyq:{request_id}:posted:{page}")],
+        [InlineKeyboardButton(text="💎 VIP bo‘limga joylanadi", callback_data=f"adm:reqreplyq:{request_id}:vip:{page}")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"adm:reqreplycancel:{request_id}:{page}")],
+    ])
+
+
+def movie_request_admin_text(request, replied: bool | None = None) -> str:
+    created = request["created_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
+    was_replied = bool(request["replied_at"]) if "replied_at" in request.keys() else False
+    if replied is not None:
+        was_replied = replied
+    reply_status = "\n💬 <b>Javob berildi</b>" if was_replied else ""
+    return (
+        "📩 <b>Kino so‘rovi</b>\n\n"
+        f"🎬 <b>{escape(request['title'])}</b>\n"
+        f"👤 Foydalanuvchi ID: <code>{request['user_id']}</code>\n"
+        f"🕒 {created}{reply_status}"
+    )
+
+
+async def send_movie_request_reply(
+    bot: Bot,
+    db: Database,
+    request_id: int,
+    reply_text: str,
+):
+    request = await db.movie_request(request_id)
+    if not request or request["status"] != "pending":
+        return "closed", request
+    try:
+        await bot.send_message(
+            int(request["user_id"]),
+            "🎬 <b>AIKINOUZ</b>\n\n" + escape(reply_text.strip()),
+        )
+    except TelegramAPIError:
+        logging.getLogger(__name__).exception(
+            "Kino so‘roviga javob yuborilmadi: request_id=%s user_id=%s",
+            request_id,
+            request["user_id"],
+        )
+        return "failed", request
+    updated = await db.mark_movie_request_replied(request_id, reply_text)
+    return "sent", updated or request
 
 
 def skip_movie_poster_kb():
@@ -1132,10 +1203,7 @@ async def request_movie_save(
     )
     username = f"@{message.from_user.username}" if message.from_user.username else "username yo‘q"
     user_name = escape(message.from_user.full_name)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Joylandi", callback_data=f"adm:reqdone:{request['id']}:0")],
-        [InlineKeyboardButton(text="🗑 O‘chirish", callback_data=f"adm:reqdelete:{request['id']}:0")],
-    ])
+    kb = movie_request_admin_kb(int(request["id"]), 0)
     try:
         await bot.send_message(
             admin_id,
@@ -1516,8 +1584,9 @@ async def admin_movie_requests(call: CallbackQuery, db: Database, admin_id: int)
     for request in items:
         title = request["title"]
         short_title = title if len(title) <= 42 else f"{title[:39]}…"
+        replied_badge = "💬 " if ("replied_at" in request.keys() and request["replied_at"]) else ""
         b.button(
-            text=f"🎬 {short_title}",
+            text=f"{replied_badge}🎬 {short_title}",
             callback_data=f"adm:req:{request['id']}:{page}",
         )
     b.adjust(1)
@@ -1545,25 +1614,10 @@ async def admin_movie_request_detail(call: CallbackQuery, db: Database, admin_id
     request = await db.movie_request(int(request_id))
     if not request or request["status"] != "pending":
         return await call.answer("Bu so‘rov allaqachon yopilgan.", show_alert=True)
-    created = request["created_at"].astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="✅ Joylandi",
-            callback_data=f"adm:reqdone:{request['id']}:{page}",
-        )],
-        [InlineKeyboardButton(
-            text="🗑 O‘chirish",
-            callback_data=f"adm:reqdelete:{request['id']}:{page}",
-        )],
-        [InlineKeyboardButton(text="⬅️ So‘rovlar", callback_data=f"adm:requests:{page}")],
-    ])
     await safe_edit(
         call,
-        "📩 <b>Kino so‘rovi</b>\n\n"
-        f"🎬 <b>{escape(request['title'])}</b>\n"
-        f"👤 Foydalanuvchi ID: <code>{request['user_id']}</code>\n"
-        f"🕒 {created}",
-        kb,
+        movie_request_admin_text(request),
+        movie_request_admin_kb(int(request["id"]), int(page), include_back=True),
     )
 
 
