@@ -1686,7 +1686,6 @@ async def admin_movie_request_quick_reply(
     if result == "closed":
         return await call.answer("Bu so‘rov allaqachon yopilgan.", show_alert=True)
     if result == "failed":
-        await call.answer("❌ Javob yuborilmadi.", show_alert=True)
         if request:
             await safe_edit(
                 call,
@@ -1762,10 +1761,16 @@ async def admin_movie_request_custom_reply(
 
     reply_text = (message.text or "").strip()
     if not reply_text:
+        data = await state.get_data()
+        request_id = int(data.get("request_id", 0) or 0)
+        page = int(data.get("request_page", 0) or 0)
         return await message.answer(
             "Javob matnini yozing:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")
+                InlineKeyboardButton(
+                    text="❌ Bekor qilish",
+                    callback_data=f"adm:reqreplycancel:{request_id}:{page}" if request_id else "cancel",
+                )
             ]]),
         )
     if len(reply_text) > 3500:
@@ -1800,7 +1805,7 @@ async def admin_movie_request_custom_reply(
 
     origin_chat_id = data.get("request_reply_chat_id")
     origin_message_id = data.get("request_reply_message_id")
-    if request and origin_chat_id and origin_message_id:
+    if result != "closed" and request and origin_chat_id and origin_message_id:
         try:
             await bot.edit_message_text(
                 chat_id=int(origin_chat_id),
