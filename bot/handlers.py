@@ -1621,6 +1621,200 @@ async def admin_movie_request_detail(call: CallbackQuery, db: Database, admin_id
     )
 
 
+@router.callback_query(F.data.startswith("adm:reqreply:"))
+async def admin_movie_request_reply_prompt(
+    call: CallbackQuery,
+    state: FSMContext,
+    db: Database,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    try:
+        _, _, request_id, page = call.data.split(":")
+        request_id = int(request_id)
+        page = int(page)
+    except (TypeError, ValueError):
+        return await call.answer("So‘rov ma’lumoti noto‘g‘ri.", show_alert=True)
+
+    request = await db.movie_request(request_id)
+    if not request or request["status"] != "pending":
+        return await call.answer("Bu so‘rov allaqachon yopilgan.", show_alert=True)
+
+    await state.clear()
+    await state.set_state(AdminFlow.request_reply)
+    await state.update_data(
+        request_id=request_id,
+        request_page=page,
+        request_reply_chat_id=call.message.chat.id,
+        request_reply_message_id=call.message.message_id,
+    )
+    await safe_edit(
+        call,
+        "✍️ <b>Javob yozish</b>\n\n"
+        f"🎬 <b>{escape(request['title'])}</b>\n"
+        f"👤 ID: <code>{request['user_id']}</code>\n\n"
+        "Ushbu foydalanuvchiga yuboriladigan javobni yozing:\n\n"
+        "<i>Yoki quyidagi tezkor javoblardan birini tanlang.</i>",
+        movie_request_reply_kb(request_id, page),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:reqreplyq:"))
+async def admin_movie_request_quick_reply(
+    call: CallbackQuery,
+    state: FSMContext,
+    db: Database,
+    bot: Bot,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    try:
+        _, _, request_id, template_key, page = call.data.split(":")
+        request_id = int(request_id)
+        page = int(page)
+    except (TypeError, ValueError):
+        return await call.answer("So‘rov ma’lumoti noto‘g‘ri.", show_alert=True)
+
+    reply_text = REQUEST_REPLY_TEMPLATES.get(template_key)
+    if not reply_text:
+        return await call.answer("Javob shabloni topilmadi.", show_alert=True)
+
+    await state.clear()
+    result, request = await send_movie_request_reply(bot, db, request_id, reply_text)
+    if result == "closed":
+        return await call.answer("Bu so‘rov allaqachon yopilgan.", show_alert=True)
+    if result == "failed":
+        await call.answer("❌ Javob yuborilmadi.", show_alert=True)
+        if request:
+            await safe_edit(
+                call,
+                movie_request_admin_text(request),
+                movie_request_admin_kb(request_id, page, include_back=True),
+            )
+        await call.message.answer(
+            "❌ <b>Javob yuborilmadi.</b>\n"
+            "Foydalanuvchiga xabar yetkazib bo‘lmadi."
+        )
+        return
+
+    await record_admin_action(
+        db,
+        call.from_user,
+        "💬 Kino so‘roviga javob berildi",
+        f"Request ID: {request_id}; {request['title']}",
+    )
+    await safe_edit(
+        call,
+        movie_request_admin_text(request, replied=True),
+        movie_request_admin_kb(request_id, page, include_back=True),
+    )
+    await call.message.answer("✅ <b>Javob foydalanuvchiga yuborildi.</b>")
+
+
+@router.callback_query(F.data.startswith("adm:reqreplycancel:"))
+async def admin_movie_request_reply_cancel(
+    call: CallbackQuery,
+    state: FSMContext,
+    db: Database,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    try:
+        _, _, request_id, page = call.data.split(":")
+        request_id = int(request_id)
+        page = int(page)
+    except (TypeError, ValueError):
+        await state.clear()
+        return await call.answer("So‘rov ma’lumoti noto‘g‘ri.", show_alert=True)
+
+    await state.clear()
+    request = await db.movie_request(request_id)
+    if request and request["status"] == "pending":
+        await safe_edit(
+            call,
+            movie_request_admin_text(request),
+            movie_request_admin_kb(request_id, page, include_back=True),
+        )
+    else:
+        await safe_edit(
+            call,
+            "❌ Javob yozish bekor qilindi.",
+            InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ So‘rovlar", callback_data=f"adm:requests:{page}")
+            ]]),
+        )
+
+
+@router.message(AdminFlow.request_reply, F.text)
+async def admin_movie_request_custom_reply(
+    message: Message,
+    state: FSMContext,
+    db: Database,
+    bot: Bot,
+    admin_id: int,
+):
+    if not is_admin(message.from_user.id, admin_id):
+        await state.clear()
+        return
+
+    reply_text = (message.text or "").strip()
+    if not reply_text:
+        return await message.answer(
+            "Javob matnini yozing:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")
+            ]]),
+        )
+    if len(reply_text) > 3500:
+        return await message.answer("Javob juda uzun. 3500 ta belgidan qisqaroq yozing.")
+
+    data = await state.get_data()
+    try:
+        request_id = int(data["request_id"])
+        page = int(data.get("request_page", 0))
+    except (KeyError, TypeError, ValueError):
+        await state.clear()
+        return await message.answer("❌ So‘rov bilan bog‘lanish ma’lumoti topilmadi.")
+
+    result, request = await send_movie_request_reply(bot, db, request_id, reply_text)
+    await state.clear()
+
+    if result == "closed":
+        return await message.answer("Bu so‘rov allaqachon yopilgan.")
+    if result == "failed":
+        await message.answer(
+            "❌ <b>Javob yuborilmadi.</b>\n"
+            "Foydalanuvchiga xabar yetkazib bo‘lmadi."
+        )
+    else:
+        await record_admin_action(
+            db,
+            message.from_user,
+            "💬 Kino so‘roviga javob berildi",
+            f"Request ID: {request_id}; {request['title']}",
+        )
+        await message.answer("✅ <b>Javob foydalanuvchiga yuborildi.</b>")
+
+    origin_chat_id = data.get("request_reply_chat_id")
+    origin_message_id = data.get("request_reply_message_id")
+    if request and origin_chat_id and origin_message_id:
+        try:
+            await bot.edit_message_text(
+                chat_id=int(origin_chat_id),
+                message_id=int(origin_message_id),
+                text=movie_request_admin_text(request, replied=(result == "sent")),
+                reply_markup=movie_request_admin_kb(request_id, page, include_back=True),
+            )
+        except TelegramAPIError:
+            logging.getLogger(__name__).exception(
+                "Admin kino so‘rovi kartasini tiklab bo‘lmadi: request_id=%s",
+                request_id,
+            )
+
+
 @router.callback_query(F.data.startswith("adm:reqdone:"))
 async def admin_complete_movie_request(
     call: CallbackQuery,
