@@ -111,6 +111,7 @@ class AdminFlow(StatesGroup):
     movie_poster = State()
     movie_description = State()
     episode_number = State()
+    episode_upload_choice = State()
     episode_video = State()
     bulk_start_number = State()
     bulk_videos = State()
@@ -118,6 +119,7 @@ class AdminFlow(StatesGroup):
     update_movie_poster = State()
     update_movie_description = State()
     renumber_episode = State()
+    replace_upload_choice = State()
     replace_video = State()
     broadcast_content = State()
     broadcast_ready = State()
@@ -308,6 +310,21 @@ def skip_movie_description_kb():
         [InlineKeyboardButton(text="⏭ Tavsifsiz yakunlash", callback_data="adm:skipdescription")],
         [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")],
     ])
+
+
+def large_video_upload_kb(episode_id: int, telegram_callback: str, public_domain: str):
+    rows = []
+    if public_domain:
+        rows.append([InlineKeyboardButton(
+            text="☁️ Katta faylni R2’ga yuklash",
+            web_app=WebAppInfo(url=f"https://{public_domain}/app?upload_episode={episode_id}"),
+        )])
+    rows.append([InlineKeyboardButton(
+        text="📤 Telegram orqali yuborish",
+        callback_data=telegram_callback,
+    )])
+    rows.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def bulk_upload_kb():
@@ -2533,12 +2550,43 @@ async def add_ep_wait_video(message: Message, state: FSMContext, db: Database, a
     except asyncpg.UniqueViolationError:
         return await message.answer("Bu qism raqami mavjud.", reply_markup=admin_menu())
     await state.update_data(episode_id=ep["id"], episode_number=int(message.text))
-    await state.set_state(AdminFlow.episode_video)
+    await state.set_state(AdminFlow.episode_upload_choice)
+    public_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
     await message.answer(
-        "📹 Endi videoni shu botga yuboring.\n\n"
-        "<i>Katta to‘liq metrajli kino bo‘lsa oddiy video yoki video fayl (document) ko‘rinishida yuborishingiz mumkin. "
-        "Cloudflare R2 ga to‘liq o‘tgandan keyingina VIP Mini App’da aktiv bo‘ladi.</i>",
-        reply_markup=cancel_kb(),
+        "📹 <b>Video yuklash usulini tanlang</b>\n\n"
+        "• 2 GB gacha faylni Telegram orqali yuborish mumkin.\n"
+        "• 2 GB dan katta kino uchun <b>Cloudflare R2 direct upload</b>dan foydalaning.\n\n"
+        "R2 direct upload VIP kino uchun ham, oddiy ochiq platforma uchun ham ishlaydi.",
+        reply_markup=large_video_upload_kb(
+            int(ep["id"]),
+            f"adm:eptg:{ep['id']}",
+            public_domain,
+        ),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:eptg:"))
+async def add_ep_choose_telegram(
+    call: CallbackQuery,
+    state: FSMContext,
+    db: Database,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    episode_id = int(call.data.rsplit(":", 1)[1])
+    data = await state.get_data()
+    if int(data.get("episode_id", 0) or 0) != episode_id:
+        ep = await db.episode(episode_id)
+        if not ep:
+            return await call.answer("Qism topilmadi.", show_alert=True)
+        await state.update_data(episode_id=episode_id, episode_number=int(ep["episode_number"]))
+    await state.set_state(AdminFlow.episode_video)
+    await safe_edit(
+        call,
+        "📤 <b>Telegram orqali yuklash</b>\n\n"
+        "Videoni shu chatga oddiy video yoki video fayl (document) ko‘rinishida yuboring.",
+        cancel_kb(),
     )
 
 
@@ -2876,10 +2924,48 @@ async def video_ep_picker(call: CallbackQuery, db: Database):
 
 
 @router.callback_query(F.data.startswith("adm:replacevideo:"))
-async def replace_video_prompt(call: CallbackQuery, state: FSMContext):
-    await state.update_data(episode_id=int(call.data.rsplit(":", 1)[1]))
+async def replace_video_prompt(call: CallbackQuery, state: FSMContext, db: Database, admin_id: int):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    episode_id = int(call.data.rsplit(":", 1)[1])
+    ep = await db.episode(episode_id)
+    if not ep:
+        return await call.answer("Qism topilmadi.", show_alert=True)
+    await state.update_data(episode_id=episode_id, episode_number=int(ep["episode_number"]))
+    await state.set_state(AdminFlow.replace_upload_choice)
+    public_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+    await safe_edit(
+        call,
+        "📹 <b>Yangi video yuklash usulini tanlang</b>\n\n"
+        "Katta fayl uchun Cloudflare R2 direct upload tavsiya qilinadi.",
+        large_video_upload_kb(
+            episode_id,
+            f"adm:replacetg:{episode_id}",
+            public_domain,
+        ),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:replacetg:"))
+async def replace_video_choose_telegram(
+    call: CallbackQuery,
+    state: FSMContext,
+    db: Database,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    episode_id = int(call.data.rsplit(":", 1)[1])
+    ep = await db.episode(episode_id)
+    if not ep:
+        return await call.answer("Qism topilmadi.", show_alert=True)
+    await state.update_data(episode_id=episode_id, episode_number=int(ep["episode_number"]))
     await state.set_state(AdminFlow.replace_video)
-    await safe_edit(call, "Yangi videoni yuboring:", cancel_kb())
+    await safe_edit(
+        call,
+        "📤 Yangi videoni shu chatga yuboring:",
+        cancel_kb(),
+    )
 
 
 @router.message(AdminFlow.replace_video, F.video | F.document)
