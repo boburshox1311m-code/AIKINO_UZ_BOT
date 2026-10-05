@@ -49,6 +49,25 @@ class Database:
             ALTER TABLE episodes ADD COLUMN IF NOT EXISTS mime_type TEXT;
             CREATE INDEX IF NOT EXISTS episodes_movie_number_idx ON episodes(movie_id, episode_number);
             CREATE INDEX IF NOT EXISTS episodes_storage_status_idx ON episodes(storage_status, id);
+            CREATE TABLE IF NOT EXISTS direct_upload_sessions (
+                id BIGSERIAL PRIMARY KEY,
+                token TEXT NOT NULL UNIQUE,
+                admin_id BIGINT NOT NULL,
+                episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+                r2_key TEXT NOT NULL,
+                upload_id TEXT NOT NULL,
+                file_name TEXT,
+                file_size BIGINT,
+                mime_type TEXT,
+                status TEXT NOT NULL DEFAULT 'uploading'
+                    CHECK (status IN ('uploading','completed','aborted','failed')),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                completed_at TIMESTAMPTZ
+            );
+            CREATE INDEX IF NOT EXISTS direct_upload_sessions_episode_idx
+                ON direct_upload_sessions(episode_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS direct_upload_sessions_status_idx
+                ON direct_upload_sessions(status, created_at DESC);
             CREATE TABLE IF NOT EXISTS watch_progress (
                 user_id BIGINT PRIMARY KEY,
                 episode_id BIGINT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
@@ -278,7 +297,10 @@ class Database:
         return await self.pool.fetch("""
             SELECT m.*, COUNT(v.id) AS view_count,
                    COUNT(DISTINCT e.id) FILTER (
-                       WHERE e.file_id IS NOT NULL
+                       WHERE (
+                           e.file_id IS NOT NULL
+                           OR (e.storage_status='ready' AND e.r2_key IS NOT NULL)
+                         )
                          AND (
                            m.is_vip=FALSE
                            OR (e.storage_status='ready' AND e.r2_key IS NOT NULL)
@@ -291,7 +313,6 @@ class Database:
                OR EXISTS (
                    SELECT 1 FROM episodes ready_ep
                    WHERE ready_ep.movie_id=m.id
-                     AND ready_ep.file_id IS NOT NULL
                      AND ready_ep.storage_status='ready'
                      AND ready_ep.r2_key IS NOT NULL
                )
@@ -421,7 +442,6 @@ class Database:
             return await self.pool.fetch("""
                 SELECT * FROM episodes
                 WHERE movie_id=$1
-                  AND file_id IS NOT NULL
                   AND storage_status='ready'
                   AND r2_key IS NOT NULL
                 ORDER BY episode_number
@@ -429,7 +449,11 @@ class Database:
             """, movie_id, max(0, offset), max(1, min(limit, 200)))
         return await self.pool.fetch("""
             SELECT * FROM episodes
-            WHERE movie_id=$1 AND file_id IS NOT NULL
+            WHERE movie_id=$1
+              AND (
+                   file_id IS NOT NULL
+                   OR (storage_status='ready' AND r2_key IS NOT NULL)
+              )
             ORDER BY episode_number
             OFFSET $2 LIMIT $3
         """, movie_id, max(0, offset), max(1, min(limit, 200)))
@@ -537,6 +561,63 @@ class Database:
         """)
         return len(rows)
 
+    async def create_direct_upload_session(
+        self,
+        token: str,
+        admin_id: int,
+        episode_id: int,
+        r2_key: str,
+        upload_id: str,
+        file_name: str | None,
+        file_size: int | None,
+        mime_type: str | None,
+    ):
+        assert self.pool
+        await self.pool.execute("""
+            UPDATE direct_upload_sessions
+            SET status='aborted'
+            WHERE episode_id=$1 AND status='uploading'
+        """, episode_id)
+        return await self.pool.fetchrow("""
+            INSERT INTO direct_upload_sessions(
+                token, admin_id, episode_id, r2_key, upload_id,
+                file_name, file_size, mime_type, status
+            )
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,'uploading')
+            RETURNING *
+        """, token, admin_id, episode_id, r2_key, upload_id,
+             file_name, file_size, mime_type)
+
+    async def direct_upload_session(self, token: str, admin_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT s.*, e.movie_id, e.episode_number,
+                   m.title AS movie_title, m.is_vip AS movie_is_vip
+            FROM direct_upload_sessions s
+            JOIN episodes e ON e.id=s.episode_id
+            JOIN movies m ON m.id=e.movie_id
+            WHERE s.token=$1 AND s.admin_id=$2
+            LIMIT 1
+        """, token, admin_id)
+
+    async def finish_direct_upload_session(self, token: str, admin_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            UPDATE direct_upload_sessions
+            SET status='completed', completed_at=NOW()
+            WHERE token=$1 AND admin_id=$2 AND status='uploading'
+            RETURNING *
+        """, token, admin_id)
+
+    async def abort_direct_upload_session(self, token: str, admin_id: int, failed: bool = False):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            UPDATE direct_upload_sessions
+            SET status=$3
+            WHERE token=$1 AND admin_id=$2 AND status='uploading'
+            RETURNING *
+        """, token, admin_id, "failed" if failed else "aborted")
+
     async def storage_backlog_count(self) -> int:
         assert self.pool
         return int(await self.pool.fetchval("""
@@ -549,15 +630,15 @@ class Database:
     async def adjacent_episode(self, movie_id: int, number: int, direction: str):
         assert self.pool
         if direction == "prev":
-            return await self.pool.fetchrow("SELECT id FROM episodes WHERE movie_id=$1 AND episode_number<$2 AND file_id IS NOT NULL ORDER BY episode_number DESC LIMIT 1", movie_id, number)
-        return await self.pool.fetchrow("SELECT id FROM episodes WHERE movie_id=$1 AND episode_number>$2 AND file_id IS NOT NULL ORDER BY episode_number LIMIT 1", movie_id, number)
+            return await self.pool.fetchrow("SELECT id FROM episodes WHERE movie_id=$1 AND episode_number<$2 AND (file_id IS NOT NULL OR (storage_status='ready' AND r2_key IS NOT NULL)) ORDER BY episode_number DESC LIMIT 1", movie_id, number)
+        return await self.pool.fetchrow("SELECT id FROM episodes WHERE movie_id=$1 AND episode_number>$2 AND (file_id IS NOT NULL OR (storage_status='ready' AND r2_key IS NOT NULL)) ORDER BY episode_number LIMIT 1", movie_id, number)
 
     async def latest_episodes(self, limit=12):
         assert self.pool
         return await self.pool.fetch("""
             SELECT e.*, m.title AS movie_title, m.emoji AS movie_emoji
             FROM episodes e JOIN movies m ON m.id=e.movie_id
-            WHERE e.file_id IS NOT NULL AND m.is_vip=FALSE
+            WHERE (e.file_id IS NOT NULL OR (e.storage_status='ready' AND e.r2_key IS NOT NULL)) AND m.is_vip=FALSE
             ORDER BY e.created_at DESC LIMIT $1
         """, limit)
 
