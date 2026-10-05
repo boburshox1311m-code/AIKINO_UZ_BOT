@@ -85,6 +85,86 @@ class R2Storage:
             ExpiresIn=expires,
         )
 
+    async def create_multipart_upload(self, key: str, content_type: str = "video/mp4") -> str:
+        if not self.enabled or not self.client:
+            raise RuntimeError("R2 storage sozlanmagan")
+        result = await asyncio.to_thread(
+            self.client.create_multipart_upload,
+            Bucket=self.bucket,
+            Key=key,
+            ContentType=content_type or "video/mp4",
+            CacheControl="private, max-age=0, no-store",
+        )
+        return str(result["UploadId"])
+
+    def presigned_upload_part(
+        self,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        expires: int = 3600,
+    ) -> str:
+        if not self.enabled or not self.client:
+            raise RuntimeError("R2 storage sozlanmagan")
+        return self.client.generate_presigned_url(
+            "upload_part",
+            Params={
+                "Bucket": self.bucket,
+                "Key": key,
+                "UploadId": upload_id,
+                "PartNumber": int(part_number),
+            },
+            ExpiresIn=expires,
+        )
+
+    async def complete_multipart_upload(
+        self,
+        key: str,
+        upload_id: str,
+        parts: list[dict],
+    ) -> None:
+        if not self.enabled or not self.client:
+            raise RuntimeError("R2 storage sozlanmagan")
+        normalized = [
+            {"ETag": str(part["ETag"]), "PartNumber": int(part["PartNumber"])}
+            for part in sorted(parts, key=lambda item: int(item["PartNumber"]))
+        ]
+        await asyncio.to_thread(
+            self.client.complete_multipart_upload,
+            Bucket=self.bucket,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": normalized},
+        )
+
+    async def abort_multipart_upload(self, key: str, upload_id: str) -> None:
+        if not self.enabled or not self.client:
+            return
+        await asyncio.to_thread(
+            self.client.abort_multipart_upload,
+            Bucket=self.bucket,
+            Key=key,
+            UploadId=upload_id,
+        )
+
+    async def ensure_browser_cors(self, origin: str) -> None:
+        if not self.enabled or not self.client or not origin:
+            return
+        cors = {
+            "CORSRules": [{
+                "AllowedOrigins": [origin],
+                "AllowedMethods": ["GET", "HEAD", "PUT"],
+                "AllowedHeaders": ["*"],
+                "ExposeHeaders": ["ETag"],
+                "MaxAgeSeconds": 3600,
+            }]
+        }
+        await asyncio.to_thread(
+            self.client.put_bucket_cors,
+            Bucket=self.bucket,
+            CORSConfiguration=cors,
+        )
+
     async def delete_object(self, key: str) -> None:
         if not self.enabled or not self.client:
             return
