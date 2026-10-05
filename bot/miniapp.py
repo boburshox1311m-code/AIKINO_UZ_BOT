@@ -1257,12 +1257,14 @@ button{cursor:pointer}
     <section class="directUploadCard">
       <div class="directUploadTitle">Cloudflare R2 direct upload</div>
       <div id="directUploadMeta" class="directUploadMeta">Kino ma’lumoti yuklanmoqda...</div>
-      <input id="directUploadFile" class="directFile" type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.mkv">
+      <input id="directUploadFile" type="file" accept=".mp4,.mov,.m4v,.mkv,.webm,application/octet-stream" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+      <label for="directUploadFile" class="directFile" style="display:block;text-align:center;font-weight:900">📁 FILES’DAN KINO TANLASH</label>
+      <div id="directSelectedFile" class="uploadDetail" style="margin-top:10px">Fayl tanlanmagan.</div>
       <button id="directUploadStart" class="uploadStart" disabled>☁️ R2’GA YUKLASHNI BOSHLASH</button>
       <div class="uploadBar"><div id="directUploadBar" class="uploadBarFill"></div></div>
       <div id="directUploadPercent" class="uploadPercent">0%</div>
-      <div id="directUploadDetail" class="uploadDetail">Fayl tanlang.</div>
-      <div class="uploadWarning">⚠️ Yuklash vaqtida Mini App’ni yopmang va internetni almashtirmang. Fayl Telegram orqali emas, to‘g‘ridan-to‘g‘ri Cloudflare R2’ga yuboriladi.</div>
+      <div id="directUploadDetail" class="uploadDetail">📁 Files ilovasidan kino faylini tanlang.</div>
+      <div class="uploadWarning">⚠️ <b>iPhone uchun:</b> 2 GB+ kinoni Photos/Gallery’dan emas, <b>Files</b> ilovasidan tanlang. Agar kino Photos’da bo‘lsa: <b>Share → Save to Files</b> qiling, keyin shu yerda 📁 Files’dan tanlang.<br><br>Yuklash vaqtida Mini App’ni yopmang va internetni almashtirmang. Fayl Telegram orqali emas, to‘g‘ridan-to‘g‘ri Cloudflare R2’ga yuboriladi.</div>
       <div id="directUploadSuccess" class="uploadSuccess">✅ Upload tugadi. Kino platformada aktiv.</div>
     </section>
   </div>
@@ -2129,11 +2131,24 @@ button{cursor:pointer}
   document.getElementById('supportSend').addEventListener('click',sendSupport);
   document.getElementById('sendReceiptBtn').addEventListener('click',sendManualReceipt);
   document.getElementById('statsRefresh').addEventListener('click',loadAdminStats);
-  document.getElementById('directUploadFile').addEventListener('change',function(){
-    var f=this.files&&this.files[0],btn=document.getElementById('directUploadStart'),d=document.getElementById('directUploadDetail');
+  function syncDirectUploadFile(){
+    var input=document.getElementById('directUploadFile');
+    var f=input.files&&input.files[0];
+    var btn=document.getElementById('directUploadStart');
+    var d=document.getElementById('directUploadDetail');
+    var s=document.getElementById('directSelectedFile');
     btn.disabled=!f||directUploadBusy;
-    if(f)d.textContent=f.name+' · '+humanBytes(f.size);
-  });
+    if(f){
+      s.textContent='✅ '+f.name+' · '+humanBytes(f.size);
+      d.textContent='Fayl tayyor. Endi R2’GA YUKLASHNI BOSHLASH tugmasini bosing.';
+    }else{
+      s.textContent='Fayl tanlanmagan.';
+      if(!directUploadBusy)d.textContent='📁 Files ilovasidan kino faylini tanlang.';
+    }
+  }
+  document.getElementById('directUploadFile').addEventListener('change',syncDirectUploadFile);
+  document.getElementById('directUploadFile').addEventListener('input',syncDirectUploadFile);
+  window.addEventListener('focus',function(){setTimeout(syncDirectUploadFile,500)});
   document.getElementById('directUploadStart').addEventListener('click',startDirectUpload);
   document.getElementById('continueBtn').addEventListener('click',function(){
     if(!me.continue){alert('Hali tomosha boshlangan kino yo‘q.');return}
