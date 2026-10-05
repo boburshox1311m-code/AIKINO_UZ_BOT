@@ -992,7 +992,8 @@ button{cursor:pointer}
 
 .profile{padding:10px 14px 24px}.profileCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0c0c0c);border-radius:20px;padding:18px}.profileName{font-size:21px;font-weight:950}.status{font-size:12px;color:#efc054;margin-top:5px}
 .profileMenu{margin-top:14px;display:grid;gap:8px}.statsWrap{padding:8px 14px 28px}.statsGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.statCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:17px;padding:14px}.statValue{font-size:27px;font-weight:950;color:#f5ca62}.statLabel{font-size:11px;color:#aaa;margin-top:4px}.statsSection{margin-top:14px;border:1px solid #32291e;background:#0d0d0d;border-radius:18px;padding:15px}.statsSection h3{margin:0 0 10px;color:#f5ca62}.topMovieRow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #222;font-size:12px}.topMovieRow:last-child{border-bottom:0}.statsRefresh{width:100%;margin-top:12px;border:0;border-radius:13px;padding:12px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.manualPlan.active{outline:2px solid #f5ca62;background:#211708}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.cardNumber{font-size:20px;letter-spacing:1.2px;font-weight:900;color:#ffe080;margin-top:13px}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
-.supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:76px;height:76px;border-radius:50%;object-fit:contain;padding:3px;background:radial-gradient(circle,#171009,#050505 74%);border:1px solid #8a6326;box-shadow:0 0 24px #d99d2d38}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.presidentRow{display:flex;align-items:center;gap:10px}.presidentMiniLogo{width:44px;height:44px;flex:none;border-radius:50%;object-fit:contain;padding:2px;border:1px solid #8a6227;background:radial-gradient(circle,#171009,#050505 75%);box-shadow:0 0 18px #d99d2d38}.presidentText{min-width:0}.presidentLabel{display:block;color:#f0c45d;font-weight:900;font-size:12px;letter-spacing:.2px}.presidentName{display:block;margin-top:2px;color:#eee;font-size:12px;line-height:1.35}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
+.supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:76px;height:76px;border-radius:50%;object-fit:contain;padding:3px;background:radial-gradient(circle,#171009,#050505 74%);border:1px solid #8a6326;box-shadow:0 0 24px #d99d2d38}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.directUploadWrap{padding:14px}.directUploadCard{border:1px solid #62481d;background:linear-gradient(145deg,#151008,#090909);border-radius:22px;padding:18px;box-shadow:0 18px 50px #0008}.directUploadTitle{font-size:21px;font-weight:950;color:#f5ca62}.directUploadMeta{font-size:13px;color:#bbb;line-height:1.55;margin:10px 0 16px}.directFile{width:100%;border:1px dashed #765825;border-radius:16px;padding:16px;background:#0b0b0b;color:#ddd}.uploadBar{height:12px;border-radius:999px;background:#242018;overflow:hidden;margin-top:16px}.uploadBarFill{height:100%;width:0;background:linear-gradient(90deg,#a86d13,#ffe17a);transition:width .18s ease}.uploadPercent{font-size:28px;font-weight:950;color:#f5ca62;margin-top:9px}.uploadDetail{font-size:12px;color:#aaa;margin-top:4px;line-height:1.45}.uploadStart{width:100%;margin-top:16px;border:0;border-radius:15px;padding:14px;background:linear-gradient(135deg,#ffe17a,#bd7a1b);color:#171003;font-weight:950}.uploadStart:disabled{opacity:.45}.uploadWarning{margin-top:14px;padding:12px;border-radius:14px;background:#21180b;border:1px solid #594018;color:#d9bd82;font-size:12px;line-height:1.5}.uploadSuccess{margin-top:14px;padding:14px;border-radius:14px;background:#0d2115;border:1px solid #276842;color:#baf3ce;font-weight:800;display:none}
+.supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.presidentRow{display:flex;align-items:center;gap:10px}.presidentMiniLogo{width:44px;height:44px;flex:none;border-radius:50%;object-fit:contain;padding:2px;border:1px solid #8a6227;background:radial-gradient(circle,#171009,#050505 75%);box-shadow:0 0 18px #d99d2d38}.presidentText{min-width:0}.presidentLabel{display:block;color:#f0c45d;font-weight:900;font-size:12px;letter-spacing:.2px}.presidentName{display:block;margin-top:2px;color:#eee;font-size:12px;line-height:1.35}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
 .empty{padding:28px 14px;color:#888;text-align:center}
 
 .inlinePlayerWrap{display:none;position:sticky;top:72px;z-index:25;background:#000;border-bottom:1px solid #2f2618;box-shadow:0 18px 38px #000b}
@@ -1234,6 +1235,23 @@ button{cursor:pointer}
   </section>
 </main>
 
+<main id="adminupload" class="page">
+  <div class="pageTop"><button class="backBtn" data-open="home">‹</button><div class="pageTitle">☁️ Katta kino yuklash</div></div>
+  <div class="directUploadWrap">
+    <section class="directUploadCard">
+      <div class="directUploadTitle">Cloudflare R2 direct upload</div>
+      <div id="directUploadMeta" class="directUploadMeta">Kino ma’lumoti yuklanmoqda...</div>
+      <input id="directUploadFile" class="directFile" type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.mkv">
+      <button id="directUploadStart" class="uploadStart" disabled>☁️ R2’GA YUKLASHNI BOSHLASH</button>
+      <div class="uploadBar"><div id="directUploadBar" class="uploadBarFill"></div></div>
+      <div id="directUploadPercent" class="uploadPercent">0%</div>
+      <div id="directUploadDetail" class="uploadDetail">Fayl tanlang.</div>
+      <div class="uploadWarning">⚠️ Yuklash vaqtida Mini App’ni yopmang va internetni almashtirmang. Fayl Telegram orqali emas, to‘g‘ridan-to‘g‘ri Cloudflare R2’ga yuboriladi.</div>
+      <div id="directUploadSuccess" class="uploadSuccess">✅ Upload tugadi. Kino platformada aktiv.</div>
+    </section>
+  </div>
+</main>
+
 <div id="playerOverlay" class="playerOverlay">
   <div id="videoStage" class="videoStage">
     <video id="playerVideo" playsinline preload="metadata"></video>
@@ -1383,6 +1401,9 @@ button{cursor:pointer}
   };
   function tr(k){return (I18N[appLang]&&I18N[appLang][k])||I18N.uz[k]||k}
 
+  var directUploadEpisodeId=Number(new URLSearchParams(location.search).get('upload_episode')||0);
+  var directUploadActiveToken='';
+  var directUploadBusy=false;
   var catalogFilter = 'all';
   var catalogOffset = 0;
   var catalogPageSize = 36;
@@ -1804,6 +1825,100 @@ button{cursor:pointer}
     favEl.innerHTML=fav.length?fav.map(card).join(''):'<div class="empty">'+tr('noFav')+'</div>';
   }
 
+  function humanBytes(n){
+    n=Number(n||0);if(!n)return '0 B';
+    var u=['B','KB','MB','GB','TB'],i=Math.min(u.length-1,Math.floor(Math.log(n)/Math.log(1024)));
+    return (n/Math.pow(1024,i)).toFixed(i>=3?2:1)+' '+u[i];
+  }
+
+  function uploadPartXHR(url,blob,onProgress){
+    return new Promise(function(resolve,reject){
+      var xhr=new XMLHttpRequest();
+      xhr.open('PUT',url,true);
+      xhr.upload.onprogress=function(e){if(e.lengthComputable)onProgress(e.loaded,e.total)};
+      xhr.onerror=function(){reject(new Error('network'))};
+      xhr.onload=function(){
+        if(xhr.status>=200&&xhr.status<300){
+          var etag=xhr.getResponseHeader('ETag')||xhr.getResponseHeader('etag');
+          if(!etag){reject(new Error('etag'));return}
+          resolve(etag);
+        }else reject(new Error('http_'+xhr.status));
+      };
+      xhr.send(blob);
+    });
+  }
+
+  function initDirectUpload(){
+    if(!directUploadEpisodeId)return;
+    if(!me.is_admin){show('home');return}
+    show('adminupload');
+    var meta=document.getElementById('directUploadMeta');
+    api('/app/api/admin/upload/info/'+directUploadEpisodeId).then(function(info){
+      if(info._http)throw new Error('info');
+      meta.innerHTML='<b>'+esc(info.movie_title)+'</b><br>🎞 '+info.episode_number+'-QISM · '+(info.is_vip?'💎 VIP bo‘lim':'🌐 Ochiq platforma');
+    }).catch(function(){meta.textContent='Kino ma’lumotini yuklab bo‘lmadi.'});
+  }
+
+  async function startDirectUpload(){
+    if(directUploadBusy)return;
+    var input=document.getElementById('directUploadFile');
+    var file=input.files&&input.files[0];
+    var detail=document.getElementById('directUploadDetail');
+    var btn=document.getElementById('directUploadStart');
+    var bar=document.getElementById('directUploadBar');
+    var pctEl=document.getElementById('directUploadPercent');
+    var success=document.getElementById('directUploadSuccess');
+    if(!file){detail.textContent='Avval video faylni tanlang.';return}
+    directUploadBusy=true;btn.disabled=true;success.style.display='none';
+    detail.textContent='Upload sessiyasi tayyorlanmoqda...';
+    var started=await api('/app/api/admin/upload/start',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({episode_id:directUploadEpisodeId,file_name:file.name,file_size:file.size,mime_type:file.type||'video/mp4'})
+    });
+    if(started._http||!started.ok){
+      directUploadBusy=false;btn.disabled=false;detail.textContent='❌ Upload boshlanmadi. Qayta urinib ko‘ring.';return
+    }
+    directUploadActiveToken=started.token;
+    var partSize=Number(started.part_size), partDefs=started.parts||[];
+    var loadedByPart={};
+    function updateProgress(){
+      var loaded=0;Object.keys(loadedByPart).forEach(function(k){loaded+=loadedByPart[k]||0});
+      var p=Math.min(100,(loaded/file.size)*100);
+      bar.style.width=p.toFixed(2)+'%';pctEl.textContent=Math.floor(p)+'%';
+      detail.textContent=humanBytes(loaded)+' / '+humanBytes(file.size)+' · '+partDefs.length+' qismli multipart upload';
+    }
+    var results=new Array(partDefs.length),cursor=0,failed=null;
+    async function worker(){
+      while(true){
+        var idx=cursor++;if(idx>=partDefs.length||failed)return;
+        var def=partDefs[idx],start=(def.number-1)*partSize,end=Math.min(file.size,start+partSize),blob=file.slice(start,end);
+        var etag=null;
+        for(var attempt=1;attempt<=3&&!etag;attempt++){
+          try{
+            etag=await uploadPartXHR(def.url,blob,function(loaded){loadedByPart[def.number]=loaded;updateProgress()});
+          }catch(e){if(attempt===3)failed=e}
+        }
+        if(etag){loadedByPart[def.number]=blob.size;updateProgress();results[idx]={PartNumber:def.number,ETag:etag}}
+      }
+    }
+    await Promise.all([worker(),worker(),worker()]);
+    if(failed){
+      await api('/app/api/admin/upload/abort',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:directUploadActiveToken})}).catch(function(){});
+      directUploadBusy=false;btn.disabled=false;detail.textContent='❌ Upload uzildi. Internetni tekshirib qayta boshlang.';return
+    }
+    detail.textContent='Cloudflare R2 upload yakunlanmoqda...';
+    var done=await api('/app/api/admin/upload/complete',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token:directUploadActiveToken,parts:results})
+    });
+    directUploadBusy=false;
+    if(done._http||!done.ok){btn.disabled=false;detail.textContent='❌ Uploadni yakunlab bo‘lmadi. Qayta urinib ko‘ring.';return}
+    bar.style.width='100%';pctEl.textContent='100%';
+    detail.textContent='✅ '+done.movie_title+' muvaffaqiyatli yuklandi.';
+    success.style.display='block';
+    btn.textContent='✅ YUKLANDI';
+  }
+
   function loadAdminStats(){
     var grid=document.getElementById('statsGrid');
     var top=document.getElementById('topMoviesStats');
@@ -1998,6 +2113,12 @@ button{cursor:pointer}
   document.getElementById('supportSend').addEventListener('click',sendSupport);
   document.getElementById('sendReceiptBtn').addEventListener('click',sendManualReceipt);
   document.getElementById('statsRefresh').addEventListener('click',loadAdminStats);
+  document.getElementById('directUploadFile').addEventListener('change',function(){
+    var f=this.files&&this.files[0],btn=document.getElementById('directUploadStart'),d=document.getElementById('directUploadDetail');
+    btn.disabled=!f||directUploadBusy;
+    if(f)d.textContent=f.name+' · '+humanBytes(f.size);
+  });
+  document.getElementById('directUploadStart').addEventListener('click',startDirectUpload);
   document.getElementById('continueBtn').addEventListener('click',function(){
     if(!me.continue){alert('Hali tomosha boshlangan kino yo‘q.');return}
     api('/app/api/movie/'+me.continue.movie_id).then(function(m){
@@ -2115,6 +2236,7 @@ button{cursor:pointer}
     appLang=(me.language==='ru'||me.language==='en')?me.language:'uz';
     if(me.authenticated&&me.user&&me.user.first_name)document.getElementById('avatar').textContent=me.user.first_name.charAt(0).toUpperCase();
     applyLanguage(appLang);
+    if(directUploadEpisodeId)initDirectUpload();
   }).catch(function(){
     document.getElementById('trendRow').innerHTML='<div class="empty">Kinolarni yuklab bo‘lmadi. Appni qayta oching.</div>';
   });
