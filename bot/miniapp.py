@@ -479,6 +479,14 @@ async def api_admin_upload_start(request: web.Request) -> web.Response:
         pass
 
     key = storage.object_key(int(ep["movie_id"]), int(ep["id"]), int(ep["episode_number"]))
+    previous = await db.active_direct_upload_for_episode(episode_id, admin_id)
+    if previous:
+        try:
+            await storage.abort_multipart_upload(previous["r2_key"], previous["upload_id"])
+        except Exception:
+            pass
+        await db.abort_direct_upload_session(previous["token"], admin_id, failed=False)
+
     upload_id = await storage.create_multipart_upload(key, mime_type)
     token = secrets.token_urlsafe(32)
     try:
@@ -538,12 +546,20 @@ async def api_admin_upload_complete(request: web.Request) -> web.Response:
     if not session or session["status"] != "uploading":
         return web.json_response({"error": "upload_session_invalid"}, status=409)
     try:
+        min_part = 64 * 1024 * 1024
+        dynamic = math.ceil(int(session["file_size"] or 0) / 160 / (5 * 1024 * 1024)) * (5 * 1024 * 1024)
+        expected_part_size = max(min_part, dynamic)
+        expected_parts = math.ceil(int(session["file_size"] or 0) / expected_part_size)
+        if len(parts) != expected_parts:
+            raise ValueError("incomplete_parts")
         normalized = []
+        seen_numbers = set()
         for item in parts:
             number = int(item.get("PartNumber"))
             etag = str(item.get("ETag") or "").strip()
-            if number < 1 or not etag:
+            if number < 1 or number > expected_parts or number in seen_numbers or not etag:
                 raise ValueError()
+            seen_numbers.add(number)
             normalized.append({"PartNumber": number, "ETag": etag})
         await storage.complete_multipart_upload(
             session["r2_key"], session["upload_id"], normalized
