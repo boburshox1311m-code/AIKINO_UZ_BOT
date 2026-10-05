@@ -4,6 +4,8 @@ import hashlib
 import hmac
 import html
 import json
+import math
+import secrets
 import time
 from io import BytesIO
 from urllib.parse import parse_qsl
@@ -414,6 +416,197 @@ async def api_toggle_favorite(request: web.Request) -> web.Response:
     return web.json_response({"favorite": added})
 
 
+async def _require_admin(request: web.Request) -> tuple[dict, int]:
+    user = _request_user(request)
+    if not user:
+        raise web.HTTPUnauthorized()
+    admin_id: int = request.app["admin_id"]
+    if int(user["id"]) != admin_id:
+        raise web.HTTPForbidden()
+    return user, admin_id
+
+
+async def api_admin_upload_info(request: web.Request) -> web.Response:
+    _, admin_id = await _require_admin(request)
+    db: Database = request.app["db"]
+    try:
+        episode_id = int(request.match_info["episode_id"])
+    except ValueError:
+        raise web.HTTPBadRequest()
+    ep = await db.episode(episode_id)
+    if not ep:
+        raise web.HTTPNotFound()
+    return web.json_response({
+        "episode_id": int(ep["id"]),
+        "episode_number": int(ep["episode_number"]),
+        "movie_id": int(ep["movie_id"]),
+        "movie_title": ep["movie_title"],
+        "is_vip": bool(ep["movie_is_vip"]),
+        "storage_status": ep["storage_status"],
+        "has_r2": bool(ep["r2_key"]),
+        "admin_id": admin_id,
+    })
+
+
+async def api_admin_upload_start(request: web.Request) -> web.Response:
+    _, admin_id = await _require_admin(request)
+    db: Database = request.app["db"]
+    storage: R2Storage = request.app["storage"]
+    if not storage.enabled:
+        return web.json_response({"error": "r2_disabled"}, status=503)
+    try:
+        data = await request.json()
+        episode_id = int(data.get("episode_id"))
+        file_size = int(data.get("file_size"))
+        file_name = str(data.get("file_name") or "movie.mp4")[:240]
+        mime_type = str(data.get("mime_type") or "video/mp4")[:120]
+    except (ValueError, TypeError, json.JSONDecodeError):
+        raise web.HTTPBadRequest()
+    if file_size < 1024 or file_size > 500 * 1024 ** 3:
+        return web.json_response({"error": "invalid_file_size"}, status=400)
+    if not mime_type.startswith("video/"):
+        mime_type = "video/mp4"
+
+    ep = await db.episode(episode_id)
+    if not ep:
+        raise web.HTTPNotFound()
+
+    origin = request.headers.get("Origin") or f"https://{request.host}"
+    try:
+        await storage.ensure_browser_cors(origin)
+    except Exception:
+        # Existing bucket CORS may already be correct; upload PUT will be the final authority.
+        pass
+
+    key = storage.object_key(int(ep["movie_id"]), int(ep["id"]), int(ep["episode_number"]))
+    upload_id = await storage.create_multipart_upload(key, mime_type)
+    token = secrets.token_urlsafe(32)
+    try:
+        await db.create_direct_upload_session(
+            token, admin_id, episode_id, key, upload_id,
+            file_name, file_size, mime_type,
+        )
+        await db.mark_episode_storage_uploading(episode_id)
+    except Exception:
+        await storage.abort_multipart_upload(key, upload_id)
+        raise
+
+    min_part = 64 * 1024 * 1024
+    target_parts = 160
+    dynamic = math.ceil(file_size / target_parts / (5 * 1024 * 1024)) * (5 * 1024 * 1024)
+    part_size = max(min_part, dynamic)
+    part_count = math.ceil(file_size / part_size)
+    if part_count > 10000:
+        await storage.abort_multipart_upload(key, upload_id)
+        await db.abort_direct_upload_session(token, admin_id, failed=True)
+        return web.json_response({"error": "too_many_parts"}, status=400)
+
+    urls = [
+        {
+            "number": number,
+            "url": storage.presigned_upload_part(key, upload_id, number, expires=4 * 3600),
+        }
+        for number in range(1, part_count + 1)
+    ]
+    return web.json_response({
+        "ok": True,
+        "token": token,
+        "part_size": part_size,
+        "part_count": part_count,
+        "parts": urls,
+        "movie_title": ep["movie_title"],
+        "episode_number": int(ep["episode_number"]),
+        "is_vip": bool(ep["movie_is_vip"]),
+    })
+
+
+async def api_admin_upload_complete(request: web.Request) -> web.Response:
+    _, admin_id = await _require_admin(request)
+    db: Database = request.app["db"]
+    storage: R2Storage = request.app["storage"]
+    bot: Bot = request.app["bot"]
+    try:
+        data = await request.json()
+        token = str(data.get("token") or "")
+        parts = data.get("parts") or []
+    except (ValueError, TypeError, json.JSONDecodeError):
+        raise web.HTTPBadRequest()
+    if not token or not isinstance(parts, list) or not parts:
+        raise web.HTTPBadRequest()
+
+    session = await db.direct_upload_session(token, admin_id)
+    if not session or session["status"] != "uploading":
+        return web.json_response({"error": "upload_session_invalid"}, status=409)
+    try:
+        normalized = []
+        for item in parts:
+            number = int(item.get("PartNumber"))
+            etag = str(item.get("ETag") or "").strip()
+            if number < 1 or not etag:
+                raise ValueError()
+            normalized.append({"PartNumber": number, "ETag": etag})
+        await storage.complete_multipart_upload(
+            session["r2_key"], session["upload_id"], normalized
+        )
+        await db.mark_episode_storage_ready(
+            int(session["episode_id"]),
+            session["r2_key"],
+            int(session["file_size"] or 0) or None,
+            session["mime_type"] or "video/mp4",
+        )
+        await db.finish_direct_upload_session(token, admin_id)
+    except Exception as exc:
+        await db.abort_direct_upload_session(token, admin_id, failed=True)
+        await db.mark_episode_storage_failed(
+            int(session["episode_id"]),
+            f"Direct multipart complete failed: {type(exc).__name__}"[:500],
+        )
+        return web.json_response({"error": "complete_failed"}, status=500)
+
+    size_gb = float(session["file_size"] or 0) / (1024 ** 3)
+    section = "💎 VIP bo‘lim" if session["movie_is_vip"] else "🌐 Ochiq platforma"
+    try:
+        await bot.send_message(
+            admin_id,
+            "✅ <b>Katta kino Cloudflare R2 ga to‘liq yuklandi.</b>\n\n"
+            f"🎬 <b>{html.escape(session['movie_title'])}</b>\n"
+            f"🎞 {session['episode_number']}-QISM\n"
+            f"💾 {size_gb:.2f} GB\n"
+            f"📂 {section}\n\n"
+            "Mini App’da tomosha qilish uchun aktiv.",
+        )
+    except TelegramAPIError:
+        pass
+    return web.json_response({
+        "ok": True,
+        "episode_id": int(session["episode_id"]),
+        "movie_title": session["movie_title"],
+        "is_vip": bool(session["movie_is_vip"]),
+    })
+
+
+async def api_admin_upload_abort(request: web.Request) -> web.Response:
+    _, admin_id = await _require_admin(request)
+    db: Database = request.app["db"]
+    storage: R2Storage = request.app["storage"]
+    try:
+        data = await request.json()
+        token = str(data.get("token") or "")
+    except (ValueError, TypeError, json.JSONDecodeError):
+        raise web.HTTPBadRequest()
+    session = await db.direct_upload_session(token, admin_id) if token else None
+    if not session or session["status"] != "uploading":
+        return web.json_response({"ok": True})
+    try:
+        await storage.abort_multipart_upload(session["r2_key"], session["upload_id"])
+    finally:
+        await db.abort_direct_upload_session(token, admin_id, failed=False)
+        await db.mark_episode_storage_failed(
+            int(session["episode_id"]), "Direct upload admin tomonidan bekor qilindi"
+        )
+    return web.json_response({"ok": True})
+
+
 async def api_admin_stats(request: web.Request) -> web.Response:
     user = _request_user(request)
     if not user:
@@ -500,7 +693,7 @@ async def api_watch_progress(request: web.Request) -> web.Response:
     except (ValueError, TypeError, json.JSONDecodeError):
         raise web.HTTPBadRequest()
     ep = await db.episode(episode_id)
-    if not ep or not ep["file_id"]:
+    if not ep or (not ep["file_id"] and not ep["r2_key"]):
         raise web.HTTPNotFound()
     user_id = int(user["id"])
     if ep["movie_is_vip"] and user_id != admin_id and not await db.is_vip_user(user_id):
@@ -701,6 +894,10 @@ def register_miniapp_routes(app: web.Application) -> None:
     app.router.add_post("/app/api/language", api_set_language)
     app.router.add_get("/app/api/payment-info", api_payment_info)
     app.router.add_get("/app/api/admin/stats", api_admin_stats)
+    app.router.add_get("/app/api/admin/upload/info/{episode_id}", api_admin_upload_info)
+    app.router.add_post("/app/api/admin/upload/start", api_admin_upload_start)
+    app.router.add_post("/app/api/admin/upload/complete", api_admin_upload_complete)
+    app.router.add_post("/app/api/admin/upload/abort", api_admin_upload_abort)
     app.router.add_post("/app/api/payment-terms/accept", api_accept_payment_terms)
     app.router.add_post("/app/api/stars-invoice/{days}", api_stars_invoice)
     app.router.add_post("/app/api/manual-receipt", api_manual_receipt)
