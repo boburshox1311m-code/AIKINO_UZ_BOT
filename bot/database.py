@@ -561,6 +561,15 @@ class Database:
         """)
         return len(rows)
 
+    async def active_direct_upload_for_episode(self, episode_id: int, admin_id: int):
+        assert self.pool
+        return await self.pool.fetchrow("""
+            SELECT * FROM direct_upload_sessions
+            WHERE episode_id=$1 AND admin_id=$2 AND status='uploading'
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+        """, episode_id, admin_id)
+
     async def create_direct_upload_session(
         self,
         token: str,
