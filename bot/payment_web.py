@@ -11,6 +11,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 
 from .database import Database
 from .miniapp import register_miniapp_routes
+from .speech import AzureSpeechClient
 from .storage import R2Storage
 
 
@@ -54,13 +55,19 @@ async def health_check(request: web.Request) -> web.Response:
             type(exc).__name__,
         )
         return web.json_response(
-            {"status": "unhealthy", "database": "error", "version": "v1.0"},
+            {
+                "status": "unhealthy",
+                "database": "error",
+                "speech": request.app["speech"].health_status,
+                "version": "v1.1",
+            },
             status=503,
         )
     return web.json_response({
         "status": "ok",
         "database": "ok",
-        "version": "v1.0",
+        "speech": request.app["speech"].health_status,
+        "version": "v1.1",
         "storage_backlog": storage_backlog,
     })
 
@@ -149,12 +156,19 @@ async def receipt_upload(request: web.Request) -> web.Response:
     return page("Chek yuborildi", "<h1>✅ Chek yuborildi</h1><p class='muted'>Admin to‘lovni tekshiradi. Natija bot orqali sizga yuboriladi.</p>")
 
 
-async def start_payment_web(bot: Bot, db: Database, admin_id: int, storage: R2Storage):
+async def start_payment_web(
+    bot: Bot,
+    db: Database,
+    admin_id: int,
+    storage: R2Storage,
+    speech: AzureSpeechClient,
+):
     app = web.Application(client_max_size=8 * 1024 * 1024)
     app["bot"] = bot
     app["db"] = db
     app["admin_id"] = admin_id
     app["storage"] = storage
+    app["speech"] = speech
     app.router.add_get("/", payment_page)
     app.router.add_get("/health", health_check)
     app.router.add_post("/receipt", receipt_upload)
