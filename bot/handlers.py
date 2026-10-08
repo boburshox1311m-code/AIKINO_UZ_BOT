@@ -18,11 +18,12 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramFor
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, PreCheckoutQuery, WebAppInfo
+from aiogram.types import BufferedInputFile, CallbackQuery, ErrorEvent, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, PreCheckoutQuery, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import Database
 from .i18n import bt, normalize_lang
+from .speech import AzureSpeechClient, AzureSpeechError, MADINA_VOICE, SARDOR_VOICE
 from .storage import R2Storage
 
 router = Router()
@@ -1240,6 +1241,48 @@ async def admin_command(message: Message, state: FSMContext, admin_id: int):
     if not is_admin(message.from_user.id, admin_id):
         return
     await message.answer("🔐 <b>Admin panel</b>", reply_markup=admin_menu())
+
+
+@router.message(Command("speech_test"))
+async def speech_test_command(
+    message: Message,
+    admin_id: int,
+    speech: AzureSpeechClient,
+):
+    """Admin-only end-to-end check for both native Uzbek Azure voices."""
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    if not speech.configured:
+        return await message.answer(
+            "❌ Azure Speech sozlanmagan. Railway Variables ichida "
+            "<code>SPEECH_KEY</code> va <code>SPEECH_REGION</code>ni tekshiring."
+        )
+
+    status_message = await message.answer("⏳ Sardor va Madina ovozlari tekshirilmoqda…")
+    try:
+        madina_audio, sardor_audio = await asyncio.gather(
+            speech.synthesize(
+                "Assalomu alaykum. Bu Madina ovozining tabiiy o‘zbekcha sinovi.",
+                voice=MADINA_VOICE,
+            ),
+            speech.synthesize(
+                "Assalomu alaykum. Bu Sardor ovozining tabiiy o‘zbekcha sinovi.",
+                voice=SARDOR_VOICE,
+            ),
+        )
+        await message.answer_document(
+            BufferedInputFile(madina_audio, filename="madina_test_48khz.wav"),
+            caption="✅ Madina — ayol ovozi, 48 kHz WAV",
+        )
+        await message.answer_document(
+            BufferedInputFile(sardor_audio, filename="sardor_test_48khz.wav"),
+            caption="✅ Sardor — erkak ovozi, 48 kHz WAV",
+        )
+        await status_message.edit_text(
+            "✅ Azure Speech ulandi. Ikkala o‘zbekcha Neural ovoz ishlayapti."
+        )
+    except AzureSpeechError as exc:
+        await status_message.edit_text(f"❌ {escape(str(exc))}")
 
 
 @router.callback_query(F.data == "admin")
