@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import urllib.request
 import math
 import re
 import logging
@@ -34,6 +36,22 @@ PAGE_ADMIN_ACTIONS = 10
 LONDON_TZ = ZoneInfo("Europe/London")
 ERROR_ALERT_COOLDOWN = 300
 _last_error_alerts: dict[str, float] = {}
+
+
+async def report_control_payment(payload: dict[str, Any]) -> None:
+    url = os.getenv("CONTROL_CENTRE_URL", "").rstrip("/")
+    token = os.getenv("CONTROL_INGEST_TOKEN", "")
+    if not url or not token:
+        return
+    def send() -> None:
+        data = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(f"{url}/api/payments/ingest", data=data, method="POST", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(request, timeout=12) as response:
+            response.read()
+    try:
+        await asyncio.to_thread(send)
+    except Exception:
+        logging.getLogger(__name__).exception("control_center_payment_sync_failed")
 
 
 def subscription_kb(channel_id: str, target: str = "home", lang: str = "uz"):
@@ -722,6 +740,7 @@ async def stars_payment_success(message: Message, db: Database):
     )
     if not inserted:
         return
+    await report_control_payment({"provider": "stars", "external_id": payment.telegram_payment_charge_id, "project_name": "AIKINO", "plan_name": f"VIP {days} kun", "customer_id": str(user_id), "amount": 0, "currency": "XTR", "stars": stars, "duration_days": days, "telegram_verified": True})
     expires = expires_at.astimezone(LONDON_TZ).strftime("%d.%m.%Y %H:%M")
     await message.answer(
         "✅ <b>Stars to‘lovi qabul qilindi!</b>\n\n"
@@ -2426,6 +2445,7 @@ async def admin_manual_payment_approve(
         return await call.answer("Bu chek oldin ko‘rib chiqilgan.", show_alert=True)
     vip_days = int(payment["vip_days"] or 30)
     vip = await db.grant_vip(payment["user_id"], vip_days)
+    await report_control_payment({"provider": "receipt", "external_id": f"aikino-receipt-{payment_id}", "project_name": "AIKINO", "plan_name": manual_plan_label(vip_days), "customer_id": str(payment["user_id"]), "amount": int(payment["amount_uzs"] or 0), "currency": "UZS", "duration_days": vip_days, "receipt_reference": str(payment.get("receipt_file_id") or payment_id), "admin_verified": True})
     await record_admin_action(
         db,
         call.from_user,
