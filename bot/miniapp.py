@@ -69,7 +69,11 @@ def _movie_json(movie) -> dict:
         "views": views,
         "badge": badge,
         "episode_count": int(movie["episode_count"] or 0) if "episode_count" in movie.keys() else 0,
-        "poster_url": f"/app/poster/{movie['id']}" if movie["poster_file_id"] else None,
+        "poster_url": (
+            f"/app/poster/{movie['id']}?v={hashlib.md5(str(movie['poster_file_id']).encode()).hexdigest()[:8]}"
+            if movie["poster_file_id"]
+            else None
+        ),
     }
 
 
@@ -931,7 +935,7 @@ MINI_APP_HTML = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#050505">
-<link rel="icon" href="/app/logo.svg?v=official4" type="image/svg+xml">
+<link rel="icon" href="/app/logo.svg" type="image/svg+xml">
 <title>AIKINOUZ</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -1093,7 +1097,7 @@ button{cursor:pointer}
 <div class="app">
 <header class="top">
   <div class="brand">
-    <div class="brandmark"><img class="brandLogo" src="/app/logo.svg?v=official4" alt="AIKINOUZ logo"><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div>
+    <div class="brandmark"><img class="brandLogo" src="/app/logo.svg" alt="AIKINOUZ logo"><div><div class="logo">AIKINOUZ</div><div class="sub">PREMIUM CINEMA</div></div></div>
     <div class="headRight"><button id="langBtn" class="langBtn">🌐 UZ</button><div id="avatar" class="avatar">A</div><button id="closeApp" class="closeBtn">×</button></div>
   </div>
 </header>
@@ -1113,9 +1117,9 @@ button{cursor:pointer}
   <section class="section"><div class="sectionHead"><h2>🆕 Yangi kinolar</h2><button data-open="catalog" data-filter="new">Barchasi ›</button></div><div id="newRow" class="row"></div></section>
   <section class="section"><div class="sectionHead"><h2>💎 VIP tanlov</h2><button data-open="vip">Ko‘rish ›</button></div><div id="vipRow" class="row"></div></section>
   <section class="publicCompany">
-    <div class="publicCompanyHead"><img src="/app/logo.svg?v=official4" alt="AIKINOUZ"><div><div class="publicCompanyTitle">AIKINOUZ</div><div class="publicCompanySub">PREMIUM KINO PLATFORMASI</div></div></div>
+    <div class="publicCompanyHead"><img src="/app/logo.svg" alt="AIKINOUZ"><div><div class="publicCompanyTitle">AIKINOUZ</div><div class="publicCompanySub">PREMIUM KINO PLATFORMASI</div></div></div>
     <div class="publicCompanyInfo">
-      <div class="presidentRow"><img class="presidentMiniLogo" src="/app/logo.svg?v=official4" alt="AIKINOUZ"><div class="presidentText"><span class="presidentLabel">AIKINOUZ KOMPANIYA PRESIDENT:</span><span class="presidentName">BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</span></div></div>
+      <div class="presidentRow"><img class="presidentMiniLogo" src="/app/logo.svg" alt="AIKINOUZ"><div class="presidentText"><span class="presidentLabel">AIKINOUZ KOMPANIYA PRESIDENT:</span><span class="presidentName">BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</span></div></div>
       <div>📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com</div>
       <div>🚀 <b>Versiya:</b> v1.0</div>
       <div>© 2026 AIKINOUZ. All rights reserved.</div>
@@ -1237,10 +1241,10 @@ button{cursor:pointer}
 <main id="support" class="page">
   <div class="pageTop"><button class="backBtn" data-open="profile">‹</button><div class="pageTitle">Support</div></div>
   <section class="supportCard">
-    <div class="publicCompanyHead"><img src="/app/logo.svg?v=official4" alt="AIKINOUZ"><div><div class="supportTitle">AIKINOUZ</div><div class="sub">PREMIUM KINO PLATFORMASI</div></div></div>
+    <div class="publicCompanyHead"><img src="/app/logo.svg" alt="AIKINOUZ"><div><div class="supportTitle">AIKINOUZ</div><div class="sub">PREMIUM KINO PLATFORMASI</div></div></div>
     <div class="supportMeta">
       <div>🏢 <b>Brend / loyiha:</b> AIKINOUZ</div>
-      <div class="presidentRow"><img class="presidentMiniLogo" src="/app/logo.svg?v=official4" alt="AIKINOUZ"><div class="presidentText"><span class="presidentLabel">AIKINOUZ KOMPANIYA PRESIDENT:</span><span class="presidentName">BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</span></div></div>
+      <div class="presidentRow"><img class="presidentMiniLogo" src="/app/logo.svg" alt="AIKINOUZ"><div class="presidentText"><span class="presidentLabel">AIKINOUZ KOMPANIYA PRESIDENT:</span><span class="presidentName">BOBURMIRZO GAZIEV MAKHAMMATTOLIBJON O‘G‘LI</span></div></div>
       <div>📧 <b>Rasmiy aloqa:</b> boburshox1311m@gmail.com</div>
       <div>🧩 <b>Platforma:</b> AIKINOUZ / AIKINO_UZ_BOT</div>
       <div>🚀 <b>Versiya:</b> v1.0</div>
