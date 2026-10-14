@@ -38,6 +38,12 @@ background:#0e0c09; color:white; font-size:16px }}
 button {{ width:100%; margin-top:20px; padding:15px; border:0; border-radius:14px;
 background:linear-gradient(135deg,#f7d575,#b97815); color:#1b1204; font-size:17px; font-weight:800 }}
 .notice {{ padding:13px; border-radius:12px; background:#2a2112; color:#ead6a8; line-height:1.45 }}
+.cardGrid {{ display:grid; gap:12px; margin:18px 0 }}
+.cardOption {{ display:block; position:relative; padding:18px; border:1px solid #a87927; border-radius:18px;
+background:linear-gradient(135deg,#f3d270,#a86913); color:#1b1103; cursor:pointer }}
+.cardOption input {{ width:auto; position:absolute; right:16px; top:16px; accent-color:#1b1103 }}
+.cardType {{ font-weight:900; letter-spacing:1.3px }}
+.cardHolder {{ font-size:12px; font-weight:750; margin-top:8px }}
 </style>
 </head><body><main class="card">{body}</main></body></html>"""
     return web.Response(text=html, content_type="text/html", status=status)
@@ -75,19 +81,28 @@ async def health_check(request: web.Request) -> web.Response:
 async def payment_page(request: web.Request) -> web.Response:
     db: Database = request.app["db"]
     settings = await db.manual_payment_settings()
-    if not settings["enabled"]:
+    cards = list(settings["cards"])
+    if not settings["enabled"] or not cards:
         return page("To‘lov vaqtincha yopiq", "<h1>To‘lov vaqtincha yopiq</h1><p class='muted'>Admin karta rekvizitlarini sozlagach sahifa ishga tushadi.</p>", 503)
-    card_digits = "".join(ch for ch in settings["card_number"] if ch.isdigit())
-    grouped = " ".join(card_digits[i:i + 4] for i in range(0, len(card_digits), 4))
+    card_options = []
+    for index, card in enumerate(cards):
+        card_digits = "".join(ch for ch in card["card_number"] if ch.isdigit())
+        grouped = " ".join(card_digits[i:i + 4] for i in range(0, len(card_digits), 4))
+        card_options.append(
+            f"<label class='cardOption'>"
+            f"<input type='radio' name='payment_card_id' value='{int(card['id'])}' "
+            f"{'checked' if index == 0 else ''} required>"
+            f"<div class='cardType'>{escape(card['card_type'])}</div>"
+            f"<div class='number'>{escape(grouped)}</div>"
+            f"<div class='cardHolder'>{escape(card['card_holder'])}</div>"
+            f"</label>"
+        )
     body = f"""
 <h1>💎 VIP uchun to‘lov</h1>
 <p class="muted"><b>{settings['vip_days']} kunlik VIP</b> — {settings['price_uzs']:,} so‘m</p>
-<div class="details">
-<div class="muted">Karta raqami</div>
-<div class="number">{escape(grouped)}</div>
-<p><b>{escape(settings['card_holder'])}</b></p>
-</div>
-<div class="notice">1. Ko‘rsatilgan summani kartaga o‘tkazing.<br>
+<p class="muted">To‘lov qiladigan kartani tanlang:</p>
+<div class="cardGrid">{''.join(card_options)}</div>
+<div class="notice">1. Ko‘rsatilgan summani tanlangan kartaga o‘tkazing.<br>
 2. Telegram ID raqamingizni kiriting.<br>
 3. Bank chekini rasm sifatida yuklang.</div>
 <form action="/receipt" method="post" enctype="multipart/form-data">
@@ -112,11 +127,20 @@ async def receipt_upload(request: web.Request) -> web.Response:
     try:
         form = await request.post()
         user_id = int(str(form.get("user_id", "")).strip())
+        payment_card_id = int(str(form.get("payment_card_id", "")).strip())
         receipt = form.get("receipt")
     except (ValueError, TypeError, web.HTTPException):
         return page("Xatolik", "<h1>Ma’lumot noto‘g‘ri</h1><p>Telegram ID va chekni qayta tekshiring.</p>", 400)
     if user_id < 1 or not isinstance(receipt, FileField):
-        return page("Xatolik", "<h1>Ma’lumot yetarli emas</h1><p>Telegram ID va chek rasmi majburiy.</p>", 400)
+        return page("Xatolik", "<h1>Ma’lumot yetarli emas</h1><p>Telegram ID, karta va chek rasmi majburiy.</p>", 400)
+    selected_card = next(
+        (card for card in settings["cards"] if int(card["id"]) == payment_card_id),
+        None,
+    )
+    if not selected_card:
+        return page("Xatolik", "<h1>Karta topilmadi</h1><p>Faol kartalardan birini tanlang.</p>", 400)
+    card_digits = "".join(ch for ch in selected_card["card_number"] if ch.isdigit())
+    card_last4 = card_digits[-4:]
     data = receipt.file.read(8 * 1024 * 1024 + 1)
     if not data or len(data) > 8 * 1024 * 1024:
         return page("Xatolik", "<h1>Chek hajmi noto‘g‘ri</h1><p>8 MB dan kichik JPG, PNG yoki WEBP rasm yuboring.</p>", 400)
@@ -124,7 +148,14 @@ async def receipt_upload(request: web.Request) -> web.Response:
     if content_type not in {"image/jpeg", "image/png", "image/webp"}:
         return page("Xatolik", "<h1>Faqat rasm qabul qilinadi</h1>", 400)
 
-    state, payment = await db.create_manual_payment_request(user_id, settings["price_uzs"])
+    state, payment = await db.create_manual_payment_request(
+        user_id,
+        settings["price_uzs"],
+        settings["vip_days"],
+        int(selected_card["id"]),
+        selected_card["card_type"],
+        card_last4,
+    )
     if state == "duplicate":
         return page("Chek kutilmoqda", "<h1>⏳ Chekingiz tekshirilmoqda</h1><p class='muted'>Oldingi so‘rovingiz hali admin tomonidan ko‘rib chiqilmagan.</p>", 409)
 
@@ -136,7 +167,8 @@ async def receipt_upload(request: web.Request) -> web.Response:
         "💳 <b>Yangi karta to‘lovi</b>\n\n"
         f"👤 Telegram ID: <code>{user_id}</code>\n"
         f"💰 Summa: <b>{settings['price_uzs']:,} so‘m</b>\n"
-        f"⏳ VIP: <b>{settings['vip_days']} kun</b>\n\n"
+        f"⏳ VIP: <b>{settings['vip_days']} kun</b>\n"
+        f"💳 Karta: <b>{escape(selected_card['card_type'])} •••• {card_last4}</b>\n\n"
         "Bank ilovasida pul tushganini tekshirib, qaror bering."
     )
     filename = receipt.filename or "receipt.jpg"
