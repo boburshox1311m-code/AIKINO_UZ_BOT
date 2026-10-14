@@ -202,6 +202,7 @@ class Database:
                 ('manual_payments_enabled', 'false'),
                 ('manual_card_number', ''),
                 ('manual_card_holder', ''),
+                ('manual_card_type', 'UZCARD'),
                 ('vip_price_uzs', '50000'),
                 ('vip_days', '30'),
                 ('manual_vip_plans', '10:15000,29:25000,30:40000,180:200000,365:400000')
@@ -1358,6 +1359,7 @@ class Database:
             "enabled": (await self.get_setting("manual_payments_enabled", "false")).lower() == "true",
             "card_number": await self.get_setting("manual_card_number", ""),
             "card_holder": await self.get_setting("manual_card_holder", ""),
+            "card_type": (await self.get_setting("manual_card_type", "UZCARD")).upper(),
             "price_uzs": int(await self.get_setting("vip_price_uzs", "50000")),
             "vip_days": int(await self.get_setting("vip_days", "30")),
             "plans": await self.manual_vip_plans(),
