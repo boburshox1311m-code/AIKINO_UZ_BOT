@@ -236,6 +236,7 @@ async def api_payment_info(request: web.Request) -> web.Response:
             "enabled": bool(manual["enabled"]),
             "card_number": grouped if manual["enabled"] else "",
             "card_holder": manual["card_holder"] if manual["enabled"] else "",
+            "card_type": manual["card_type"] if manual["enabled"] else "",
             "plans": [
                 {"days": int(days), "price_uzs": int(price)}
                 for days, price in manual["plans"]
@@ -937,8 +938,8 @@ MINI_APP_HTML = r"""<!doctype html>
 <style>
 :root{--bg:#050505;--panel:#0d0d0d;--panel2:#121212;--gold:#f4c75c;--gold2:#b77a1d;--red:#d92631;--text:#fff;--muted:#989898;--line:#272117}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-body{min-height:100vh;background:
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overscroll-behavior:none}
+body{min-height:100vh;overscroll-behavior-y:none;background:
 radial-gradient(circle at 100% 0,#6c421b2e,transparent 30%),
 radial-gradient(circle at 0 40%,#5f0d1422,transparent 30%),
 #050505}
@@ -1007,7 +1008,7 @@ button{cursor:pointer}
 .vipGate{margin:12px 14px 24px;border:1px solid #6b4e20;border-radius:22px;padding:22px 18px;text-align:center;background:linear-gradient(145deg,#181108,#0b0b0b);box-shadow:0 18px 50px #0008}.vipGate .vipLock{font-size:42px}.vipGate h2{margin:10px 0 7px;color:#f5ca62;font-size:21px}.vipGate p{margin:0;color:#b9b9b9;font-size:13px;line-height:1.55}
 
 .profile{padding:10px 14px 24px}.profileCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0c0c0c);border-radius:20px;padding:18px}.profileName{font-size:21px;font-weight:950}.status{font-size:12px;color:#efc054;margin-top:5px}
-.profileMenu{margin-top:14px;display:grid;gap:8px}.statsWrap{padding:8px 14px 28px}.statsGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.statCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:17px;padding:14px}.statValue{font-size:27px;font-weight:950;color:#f5ca62}.statLabel{font-size:11px;color:#aaa;margin-top:4px}.statsSection{margin-top:14px;border:1px solid #32291e;background:#0d0d0d;border-radius:18px;padding:15px}.statsSection h3{margin:0 0 10px;color:#f5ca62}.topMovieRow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #222;font-size:12px}.topMovieRow:last-child{border-bottom:0}.statsRefresh{width:100%;margin-top:12px;border:0;border-radius:13px;padding:12px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.manualPlan.active{outline:2px solid #f5ca62;background:#211708}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.cardNumber{font-size:20px;letter-spacing:1.2px;font-weight:900;color:#ffe080;margin-top:13px}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
+.profileMenu{margin-top:14px;display:grid;gap:8px}.statsWrap{padding:8px 14px 28px}.statsGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.statCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:17px;padding:14px}.statValue{font-size:27px;font-weight:950;color:#f5ca62}.statLabel{font-size:11px;color:#aaa;margin-top:4px}.statsSection{margin-top:14px;border:1px solid #32291e;background:#0d0d0d;border-radius:18px;padding:15px}.statsSection h3{margin:0 0 10px;color:#f5ca62}.topMovieRow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #222;font-size:12px}.topMovieRow:last-child{border-bottom:0}.statsRefresh{width:100%;margin-top:12px;border:0;border-radius:13px;padding:12px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.profileItem{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 15px;border-radius:14px;border:1px solid #27231c;background:#0e0e0e;color:#fff;text-align:left;font-weight:800}.profileItem.gold{color:#f4ca61;border-color:#57411d}.payPage{padding:8px 14px 28px}.payCard{border:1px solid #49391e;background:linear-gradient(145deg,#15110b,#0b0b0b);border-radius:20px;padding:17px;margin-bottom:12px}.payTitle{font-size:20px;font-weight:950;color:#f5ca62}.payDesc{font-size:12px;color:#aaa;line-height:1.5;margin-top:6px}.starPlans{display:grid;gap:8px;margin-top:13px}.starPlan{width:100%;border:1px solid #60471e;background:#161108;color:#f7cc64;border-radius:14px;padding:13px;text-align:left;font-weight:900;display:flex;justify-content:space-between;align-items:center}.manualPlan.active{outline:2px solid #f5ca62;background:#211708}.termsBox{margin-top:12px;border:1px solid #333;background:#0e0e0e;border-radius:13px;padding:12px;font-size:11px;color:#bbb;line-height:1.5}.payPrimary{width:100%;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003;margin-top:10px}.bankCard{position:relative;overflow:hidden;margin-top:14px;padding:18px;border-radius:20px;min-height:176px;background:radial-gradient(circle at 88% 10%,#fff4 0 2%,transparent 24%),linear-gradient(135deg,#f7d778 0%,#b97918 48%,#5a3509 100%);color:#160e03;border:1px solid #ffe59a;box-shadow:0 16px 38px #0009,0 0 26px #d49a2738}.bankCard:after{content:"";position:absolute;inset:-60% -20%;background:linear-gradient(110deg,transparent 38%,#fff8 49%,transparent 60%);transform:translateX(-65%) rotate(8deg);animation:cardShine 4.8s ease-in-out infinite}.bankCard>*{position:relative;z-index:1}.bankCardTop,.bankCardBottom{display:flex;align-items:center;justify-content:space-between;gap:12px}.cardBrand{font-size:16px;font-weight:1000;letter-spacing:1.4px}.cardChip{width:42px;height:31px;border-radius:8px;background:linear-gradient(135deg,#fff4b4,#9d6a12);border:1px solid #7f550e;box-shadow:inset 0 0 0 1px #fff7}.cardNumber{font-size:21px;letter-spacing:1.55px;font-weight:950;color:#1a1002;margin:24px 0 20px;text-shadow:0 1px #fff7;white-space:nowrap}.cardHolderLabel{font-size:8px;letter-spacing:1.5px;font-weight:900;opacity:.65}.cardHolderName{font-size:13px;font-weight:950;letter-spacing:.7px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.copyCard{border:1px solid #26170466;background:#110a02cc;color:#ffe9aa;border-radius:11px;padding:9px 11px;font-size:11px;font-weight:950}.copyCard:active{transform:scale(.97)}@keyframes cardShine{0%,65%{transform:translateX(-70%) rotate(8deg)}100%{transform:translateX(75%) rotate(8deg)}}.receiptInput{width:100%;margin-top:12px;background:#0d0d0d;border:1px solid #342b20;border-radius:12px;padding:11px;color:#ddd}.payStatus{font-size:12px;color:#aaa;margin-top:9px;line-height:1.45}
 .supportCard{margin:8px 14px 20px;border:1px solid #5a431e;background:linear-gradient(145deg,#17120b,#0b0b0b);border-radius:22px;padding:18px}.publicCompany{margin:18px 14px 22px;border:1px solid #6b4e20;background:radial-gradient(circle at top right,#6d461a55,transparent 45%),#0b0b0b;border-radius:22px;padding:18px}.publicCompanyHead{display:flex;align-items:center;gap:13px}.publicCompanyHead img{width:76px;height:76px;border-radius:50%;object-fit:contain;padding:3px;background:radial-gradient(circle,#171009,#050505 74%);border:1px solid #8a6326;box-shadow:0 0 24px #d99d2d38}.publicCompanyTitle{font-size:22px;font-weight:950;color:#f5ca62}.publicCompanySub{font-size:10px;letter-spacing:1.7px;color:#b89b61;margin-top:2px}.publicCompanyInfo{display:grid;gap:7px;margin-top:14px;color:#d8d8d8;font-size:12px;line-height:1.45}.publicCompanyInfo b{color:#f1c55f}.supportTitle{font-size:24px;font-weight:950;color:#f5ca62}.directUploadWrap{padding:14px}.directUploadCard{border:1px solid #62481d;background:linear-gradient(145deg,#151008,#090909);border-radius:22px;padding:18px;box-shadow:0 18px 50px #0008}.directUploadTitle{font-size:21px;font-weight:950;color:#f5ca62}.directUploadMeta{font-size:13px;color:#bbb;line-height:1.55;margin:10px 0 16px}.directFile{width:100%;border:1px dashed #765825;border-radius:16px;padding:16px;background:#0b0b0b;color:#ddd}.uploadBar{height:12px;border-radius:999px;background:#242018;overflow:hidden;margin-top:16px}.uploadBarFill{height:100%;width:0;background:linear-gradient(90deg,#a86d13,#ffe17a);transition:width .18s ease}.uploadPercent{font-size:28px;font-weight:950;color:#f5ca62;margin-top:9px}.uploadDetail{font-size:12px;color:#aaa;margin-top:4px;line-height:1.45}.uploadStart{width:100%;margin-top:16px;border:0;border-radius:15px;padding:14px;background:linear-gradient(135deg,#ffe17a,#bd7a1b);color:#171003;font-weight:950}.uploadStart:disabled{opacity:.45}.uploadWarning{margin-top:14px;padding:12px;border-radius:14px;background:#21180b;border:1px solid #594018;color:#d9bd82;font-size:12px;line-height:1.5}.uploadSuccess{margin-top:14px;padding:14px;border-radius:14px;background:#0d2115;border:1px solid #276842;color:#baf3ce;font-weight:800;display:none}
 .supportMeta{display:grid;gap:9px;margin-top:14px;color:#d2d2d2;font-size:13px;line-height:1.45}.supportMeta b{color:#f0c45d}.presidentRow{display:flex;align-items:center;gap:10px}.presidentMiniLogo{width:44px;height:44px;flex:none;border-radius:50%;object-fit:contain;padding:2px;border:1px solid #8a6227;background:radial-gradient(circle,#171009,#050505 75%);box-shadow:0 0 18px #d99d2d38}.presidentText{min-width:0}.presidentLabel{display:block;color:#f0c45d;font-weight:900;font-size:12px;letter-spacing:.2px}.presidentName{display:block;margin-top:2px;color:#eee;font-size:12px;line-height:1.35}.supportForm textarea{width:100%;min-height:130px;background:#0e0e0e;color:#fff;border:1px solid #332d24;border-radius:14px;padding:13px;margin-top:8px}.supportSend{width:100%;margin-top:10px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffe17a,#b87518);font-weight:950;color:#171003}.supportNote{font-size:11px;color:#8f8f8f;margin-top:8px}
 .empty{padding:28px 14px;color:#888;text-align:center}
@@ -1324,7 +1325,12 @@ button{cursor:pointer}
   var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
   if(tg){
     try{tg.ready()}catch(e){}
-    try{tg.expand()}catch(e){}
+    function lockMiniAppViewport(){
+      try{tg.expand()}catch(e){}
+      try{if(typeof tg.disableVerticalSwipes==='function')tg.disableVerticalSwipes()}catch(e){}
+    }
+    lockMiniAppViewport();
+    try{if(typeof tg.onEvent==='function')tg.onEvent('viewportChanged',lockMiniAppViewport)}catch(e){}
     try{tg.setHeaderColor('#050505')}catch(e){}
     try{tg.setBackgroundColor('#050505')}catch(e){}
     try{if(typeof tg.requestFullscreen==='function') tg.requestFullscreen()}catch(e){}
@@ -1984,51 +1990,79 @@ button{cursor:pointer}
     return Number(n||0).toLocaleString('en-GB').replace(/,/g,' ')+' so‘m';
   }
 
+  function paymentError(el){
+    if(el)el.innerHTML='<div class="payStatus">To‘lov ma’lumotini yuklab bo‘lmadi. Qayta urinib ko‘ring.</div>';
+  }
+
   function loadPayments(){
-    var plans=document.getElementById('starPlans');
-    var manual=document.getElementById('manualPaymentBox');
+    var starPlansEl=document.getElementById('starPlans');
+    var manualEl=document.getElementById('manualPaymentBox');
+    var receiptInput=document.getElementById('receiptInput');
+    var receiptBtn=document.getElementById('sendReceiptBtn');
     if(!initData){
-      plans.innerHTML='<div class="payStatus">'+tr('telegramOnly')+'</div>';
-      manual.innerHTML='<div class="payStatus">'+tr('telegramLogin')+'</div>';
-      document.getElementById('sendReceiptBtn').disabled=true;
+      starPlansEl.innerHTML='<div class="payStatus">'+tr('telegramOnly')+'</div>';
+      manualEl.innerHTML='<div class="payStatus">'+tr('telegramLogin')+'</div>';
+      receiptBtn.disabled=true;
       return;
     }
     api('/app/api/payment-info').then(function(info){
-      paymentInfo=info;
-      if(info.stars&&info.stars.enabled){
+      paymentInfo=info||{};
+      if(info._http)throw new Error('payment_http_'+info._http);
+      try{
+        var stars=info.stars||{};
+        var starItems=Array.isArray(stars.plans)?stars.plans:[];
         var terms=document.getElementById('starsTerms');
-        terms.style.display=info.stars.terms_accepted?'none':'block';
-        plans.innerHTML=(info.stars.plans||[]).map(function(p){
-          return '<button class="starPlan" data-star-days="'+p.days+'" '+(info.stars.terms_accepted?'':'disabled')+'><span>💎 '+p.days+' kun'+(p.recurring?' · Avtomatik':'')+'</span><span>⭐ '+p.stars+'</span></button>';
-        }).join('')||'<div class="payStatus">'+tr('noPlans')+'</div>';
-        document.getElementById('starsStatus').textContent=info.stars.subscription_active?'🔄 Faol avtomatik Stars obunangiz mavjud.':'';
-      }else{
-        document.getElementById('starsTerms').style.display='none';
-        plans.innerHTML='<div class="payStatus">'+tr('starsOff')+'</div>';
-      }
-      if(info.manual&&info.manual.enabled){
-        var plans=(info.manual.plans||[]);
-        selectedManualDays=plans.length?Number(plans[0].days):0;
-        var planButtons=plans.map(function(p){
-          var label=p.days===180?tr('months6'):(p.days===365?tr('year1'):p.days+' '+tr('days'));
-          return '<button class="starPlan manualPlan '+(Number(p.days)===selectedManualDays?'active':'')+'" data-manual-days="'+p.days+'"><span>💳 '+label+'</span><span>'+moneyUzs(p.price_uzs)+'</span></button>';
-        }).join('');
-        manual.innerHTML=
-          '<div class="payDesc">'+tr('choosePlan')+'</div>'+
-          '<div class="starPlans">'+planButtons+'</div>'+
-          '<div class="cardNumber">'+esc(info.manual.card_number)+'</div>'+
-          '<div class="payDesc">'+tr('cardOwner')+' <b>'+esc(info.manual.card_holder)+'</b></div>'+
-          '<div class="payDesc">'+tr('receiptInstruction')+'</div>';
-        document.getElementById('receiptInput').style.display='block';
-        document.getElementById('sendReceiptBtn').style.display='block';
-      }else{
-        manual.innerHTML='<div class="payStatus">'+tr('manualOff')+'</div>';
-        document.getElementById('receiptInput').style.display='none';
-        document.getElementById('sendReceiptBtn').style.display='none';
+        if(stars.enabled){
+          terms.style.display=stars.terms_accepted?'none':'block';
+          starPlansEl.innerHTML=starItems.map(function(p){
+            return '<button class="starPlan" data-star-days="'+Number(p.days)+'" '+(stars.terms_accepted?'':'disabled')+'><span>💎 '+Number(p.days)+' kun'+(p.recurring?' · Avtomatik':'')+'</span><span>⭐ '+Number(p.stars)+'</span></button>';
+          }).join('')||'<div class="payStatus">'+tr('noPlans')+'</div>';
+          document.getElementById('starsStatus').textContent=stars.subscription_active?'🔄 Faol avtomatik Stars obunangiz mavjud.':'';
+        }else{
+          terms.style.display='none';
+          starPlansEl.innerHTML='<div class="payStatus">'+tr('starsOff')+'</div>';
+        }
+      }catch(starsError){ paymentError(starPlansEl); }
+      try{
+        var manualInfo=info.manual||{};
+        var manualPlans=Array.isArray(manualInfo.plans)?manualInfo.plans:[];
+        if(manualInfo.enabled){
+          selectedManualDays=manualPlans.length?Number(manualPlans[0].days):0;
+          var planButtons=manualPlans.map(function(p){
+            var days=Number(p.days);
+            var label=days===180?tr('months6'):(days===365?tr('year1'):days+' '+tr('days'));
+            return '<button class="starPlan manualPlan '+(days===selectedManualDays?'active':'')+'" data-manual-days="'+days+'"><span>💳 '+label+'</span><span>'+moneyUzs(p.price_uzs)+'</span></button>';
+          }).join('');
+          var cardType=String(manualInfo.card_type||'UZCARD').toUpperCase();
+          if(['UZCARD','HUMO','VISA'].indexOf(cardType)<0)cardType='UZCARD';
+          manualEl.innerHTML=
+            '<div class="payDesc">'+tr('choosePlan')+'</div>'+
+            '<div class="starPlans">'+planButtons+'</div>'+
+            '<div class="bankCard">'+
+              '<div class="bankCardTop"><div class="cardChip"></div><div class="cardBrand">'+esc(cardType)+'</div></div>'+
+              '<div class="cardNumber">'+esc(manualInfo.card_number||'')+'</div>'+
+              '<div class="bankCardBottom"><div><div class="cardHolderLabel">KARTA EGASI</div><div class="cardHolderName">'+esc(manualInfo.card_holder||'')+'</div></div>'+
+              '<button class="copyCard" type="button" data-copy-card="'+esc(manualInfo.card_number||'')+'">⧉ NUSXALASH</button></div>'+
+            '</div>'+
+            '<div class="payDesc">'+tr('receiptInstruction')+'</div>';
+          receiptInput.style.display='block';
+          receiptBtn.style.display='block';
+          receiptBtn.disabled=false;
+        }else{
+          manualEl.innerHTML='<div class="payStatus">'+tr('manualOff')+'</div>';
+          receiptInput.style.display='none';
+          receiptBtn.style.display='none';
+        }
+      }catch(manualError){
+        paymentError(manualEl);
+        receiptInput.style.display='none';
+        receiptBtn.style.display='none';
       }
     }).catch(function(){
-      plans.innerHTML='<div class="payStatus">To‘lov ma’lumotini yuklab bo‘lmadi.</div>';
-      manual.innerHTML='<div class="payStatus">To‘lov ma’lumotini yuklab bo‘lmadi.</div>';
+      paymentError(starPlansEl);
+      paymentError(manualEl);
+      receiptInput.style.display='none';
+      receiptBtn.style.display='none';
     });
   }
 
@@ -2108,6 +2142,15 @@ button{cursor:pointer}
     if(open){var target=open.getAttribute('data-open');var f=open.getAttribute('data-filter');if(f)setFilter(f);show(target);if(target==='payments')loadPayments();return}
     var star=e.target.closest('[data-star-days]');
     if(star){openStarsInvoice(Number(star.getAttribute('data-star-days')));return}
+    var copyCard=e.target.closest('[data-copy-card]');
+    if(copyCard){
+      var cardText=copyCard.getAttribute('data-copy-card')||'';
+      var done=function(){copyCard.textContent='✓ NUSXALANDI';setTimeout(function(){copyCard.textContent='⧉ NUSXALASH'},1800)};
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(cardText).then(done).catch(function(){window.prompt('Karta raqamini nusxalang:',cardText)});
+      }else{ window.prompt('Karta raqamini nusxalang:',cardText); }
+      return;
+    }
     var manualPlan=e.target.closest('[data-manual-days]');
     if(manualPlan){
       selectedManualDays=Number(manualPlan.getAttribute('data-manual-days'));

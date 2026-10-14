@@ -2225,6 +2225,7 @@ async def render_manual_payment_admin(
     digits = "".join(ch for ch in settings["card_number"] if ch.isdigit())
     grouped = " ".join(digits[i:i + 4] for i in range(0, len(digits), 4)) or "Kiritilmagan"
     holder = settings["card_holder"] or "Kiritilmagan"
+    card_type = settings["card_type"] if settings["card_type"] in {"UZCARD", "HUMO", "VISA"} else "UZCARD"
     plans_text = "\n".join(
         f"• {manual_plan_label(days)} — {format_number(price)} so‘m"
         for days, price in settings["plans"]
@@ -2236,6 +2237,11 @@ async def render_manual_payment_admin(
         )],
         [InlineKeyboardButton(text="💳 Karta raqamini o‘zgartirish", callback_data="adm:manualcard")],
         [InlineKeyboardButton(text="👤 Karta egasini o‘zgartirish", callback_data="adm:manualholder")],
+        [
+            InlineKeyboardButton(text=("✅ " if card_type == "UZCARD" else "") + "UZCARD", callback_data="adm:cardtype:UZCARD"),
+            InlineKeyboardButton(text=("✅ " if card_type == "HUMO" else "") + "HUMO", callback_data="adm:cardtype:HUMO"),
+            InlineKeyboardButton(text=("✅ " if card_type == "VISA" else "") + "VISA", callback_data="adm:cardtype:VISA"),
+        ],
         [InlineKeyboardButton(text="📦 VIP paketlari va narxlari", callback_data="adm:manualplans")],
     ]
     if payment_url:
@@ -2246,6 +2252,7 @@ async def render_manual_payment_admin(
         "💳 <b>Karta to‘lov sozlamalari</b>\n\n"
         f"Holati: <b>{status}</b>\n"
         f"Karta: <code>{escape(grouped)}</code>\n"
+        f"Karta turi: <b>{escape(card_type)}</b>\n"
         f"Karta egasi: <b>{escape(holder)}</b>\n\n"
         f"<b>VIP paketlari:</b>\n{plans_text}\n\n"
         "Chek kelganda tanlangan paket, summa va foydalanuvchi ID birga ko‘rinadi.",
@@ -2281,6 +2288,24 @@ async def admin_manual_payment_toggle(
         return await call.answer("Avval karta raqami va karta egasini kiriting.", show_alert=True)
     await db.set_setting("manual_payments_enabled", "false" if settings["enabled"] else "true")
     await record_admin_action(db, call.from_user, "💳 Karta to‘lovi holati o‘zgartirildi", "O‘chirildi" if settings["enabled"] else "Yoqildi")
+    await render_manual_payment_admin(call, db, payment_url)
+
+
+@router.callback_query(F.data.startswith("adm:cardtype:"))
+async def admin_manual_card_type(
+    call: CallbackQuery,
+    db: Database,
+    admin_id: int,
+    payment_url: str | None,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    card_type = (call.data or "").rsplit(":", 1)[-1].upper()
+    if card_type not in {"UZCARD", "HUMO", "VISA"}:
+        return await call.answer("Karta turi noto‘g‘ri.", show_alert=True)
+    await db.set_setting("manual_card_type", card_type)
+    await record_admin_action(db, call.from_user, "💳 Karta turi yangilandi", card_type)
+    await call.answer(f"✅ {card_type} tanlandi")
     await render_manual_payment_admin(call, db, payment_url)
 
 
