@@ -74,7 +74,15 @@ def _movie_json(movie) -> dict:
 
 
 async def app_page(request: web.Request) -> web.Response:
-    return web.Response(text=MINI_APP_HTML, content_type="text/html")
+    return web.Response(
+        text=MINI_APP_HTML,
+        content_type="text/html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 async def api_catalog(request: web.Request) -> web.Response:
