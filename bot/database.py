@@ -207,6 +207,33 @@ class Database:
                 ('vip_days', '30'),
                 ('manual_vip_plans', '10:15000,29:25000,30:40000,180:200000,365:400000')
             ON CONFLICT (key) DO NOTHING;
+            CREATE TABLE IF NOT EXISTS manual_payment_cards (
+                id BIGSERIAL PRIMARY KEY,
+                card_type TEXT NOT NULL
+                    CHECK (card_type IN ('UZCARD', 'HUMO', 'VISA', 'MASTERCARD')),
+                card_number TEXT NOT NULL UNIQUE,
+                card_holder TEXT NOT NULL,
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS manual_payment_cards_active_order_idx
+                ON manual_payment_cards(enabled, sort_order, id);
+            INSERT INTO manual_payment_cards(card_type, card_number, card_holder, sort_order)
+            SELECT
+                CASE
+                    WHEN UPPER(COALESCE((SELECT value FROM bot_settings WHERE key='manual_card_type'), 'UZCARD'))
+                         IN ('UZCARD', 'HUMO', 'VISA', 'MASTERCARD')
+                    THEN UPPER(COALESCE((SELECT value FROM bot_settings WHERE key='manual_card_type'), 'UZCARD'))
+                    ELSE 'UZCARD'
+                END,
+                (SELECT value FROM bot_settings WHERE key='manual_card_number'),
+                (SELECT value FROM bot_settings WHERE key='manual_card_holder'),
+                0
+            WHERE COALESCE((SELECT value FROM bot_settings WHERE key='manual_card_number'), '') <> ''
+              AND COALESCE((SELECT value FROM bot_settings WHERE key='manual_card_holder'), '') <> ''
+              AND NOT EXISTS (SELECT 1 FROM manual_payment_cards);
             CREATE TABLE IF NOT EXISTS manual_payment_requests (
                 id BIGSERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
@@ -221,6 +248,9 @@ class Database:
             CREATE INDEX IF NOT EXISTS manual_payment_requests_status_created_idx
                 ON manual_payment_requests(status, created_at DESC);
             ALTER TABLE manual_payment_requests ADD COLUMN IF NOT EXISTS vip_days INTEGER NOT NULL DEFAULT 30;
+            ALTER TABLE manual_payment_requests ADD COLUMN IF NOT EXISTS payment_card_id BIGINT;
+            ALTER TABLE manual_payment_requests ADD COLUMN IF NOT EXISTS payment_card_type TEXT;
+            ALTER TABLE manual_payment_requests ADD COLUMN IF NOT EXISTS payment_card_last4 TEXT;
             CREATE TABLE IF NOT EXISTS broadcast_history (
                 id BIGSERIAL PRIMARY KEY,
                 admin_id BIGINT NOT NULL,
@@ -1354,12 +1384,76 @@ class Database:
         value = ",".join(f"{days}:{price}" for days, price in sorted(set(plans)))
         await self.set_setting("manual_vip_plans", value)
 
+    async def manual_payment_cards(self, enabled_only: bool = True):
+        assert self.pool
+        condition = "WHERE enabled=TRUE" if enabled_only else ""
+        return await self.pool.fetch(f"""
+            SELECT id, card_type, card_number, card_holder, enabled, sort_order
+            FROM manual_payment_cards
+            {condition}
+            ORDER BY sort_order ASC, id ASC
+            LIMIT 4
+        """)
+
+    async def manual_payment_card(self, card_id: int, enabled_only: bool = True):
+        assert self.pool
+        if enabled_only:
+            return await self.pool.fetchrow("""
+                SELECT id, card_type, card_number, card_holder, enabled, sort_order
+                FROM manual_payment_cards
+                WHERE id=$1 AND enabled=TRUE
+            """, card_id)
+        return await self.pool.fetchrow("""
+            SELECT id, card_type, card_number, card_holder, enabled, sort_order
+            FROM manual_payment_cards
+            WHERE id=$1
+        """, card_id)
+
+    async def add_manual_payment_card(self, card_type: str, card_number: str, card_holder: str):
+        assert self.pool
+        card_type = card_type.upper().strip()
+        if card_type not in {"UZCARD", "HUMO", "VISA", "MASTERCARD"}:
+            return "invalid_type", None
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("LOCK TABLE manual_payment_cards IN EXCLUSIVE MODE")
+                count = await conn.fetchval("SELECT COUNT(*) FROM manual_payment_cards")
+                if int(count or 0) >= 4:
+                    return "limit", None
+                existing = await conn.fetchrow(
+                    "SELECT * FROM manual_payment_cards WHERE card_number=$1",
+                    card_number,
+                )
+                if existing:
+                    return "duplicate", existing
+                row = await conn.fetchrow("""
+                    INSERT INTO manual_payment_cards(
+                        card_type, card_number, card_holder, sort_order
+                    )
+                    VALUES(
+                        $1, $2, $3,
+                        COALESCE((SELECT MAX(sort_order) + 1 FROM manual_payment_cards), 0)
+                    )
+                    RETURNING *
+                """, card_type, card_number, card_holder)
+                return "created", row
+
+    async def delete_manual_payment_card(self, card_id: int):
+        assert self.pool
+        return await self.pool.fetchrow(
+            "DELETE FROM manual_payment_cards WHERE id=$1 RETURNING *",
+            card_id,
+        )
+
     async def manual_payment_settings(self):
+        cards = await self.manual_payment_cards(enabled_only=True)
+        primary = cards[0] if cards else None
         return {
             "enabled": (await self.get_setting("manual_payments_enabled", "false")).lower() == "true",
-            "card_number": await self.get_setting("manual_card_number", ""),
-            "card_holder": await self.get_setting("manual_card_holder", ""),
-            "card_type": (await self.get_setting("manual_card_type", "UZCARD")).upper(),
+            "card_number": primary["card_number"] if primary else "",
+            "card_holder": primary["card_holder"] if primary else "",
+            "card_type": primary["card_type"] if primary else "UZCARD",
+            "cards": cards,
             "price_uzs": int(await self.get_setting("vip_price_uzs", "50000")),
             "vip_days": int(await self.get_setting("vip_days", "30")),
             "plans": await self.manual_vip_plans(),
@@ -1370,6 +1464,9 @@ class Database:
         user_id: int,
         amount_uzs: int,
         vip_days: int = 30,
+        payment_card_id: int | None = None,
+        payment_card_type: str | None = None,
+        payment_card_last4: str | None = None,
     ):
         assert self.pool
         existing = await self.pool.fetchrow("""
@@ -1380,10 +1477,13 @@ class Database:
         if existing:
             return "duplicate", existing
         request = await self.pool.fetchrow("""
-            INSERT INTO manual_payment_requests(user_id, amount_uzs, vip_days)
-            VALUES($1, $2, $3)
+            INSERT INTO manual_payment_requests(
+                user_id, amount_uzs, vip_days,
+                payment_card_id, payment_card_type, payment_card_last4
+            )
+            VALUES($1, $2, $3, $4, $5, $6)
             RETURNING *
-        """, user_id, amount_uzs, vip_days)
+        """, user_id, amount_uzs, vip_days, payment_card_id, payment_card_type, payment_card_last4)
         return "created", request
 
     async def set_manual_payment_receipt(self, request_id: int, file_id: str):
