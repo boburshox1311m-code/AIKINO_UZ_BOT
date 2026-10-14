@@ -147,6 +147,8 @@ class AdminFlow(StatesGroup):
     vip_revoke_id = State()
     manual_card_number = State()
     manual_card_holder = State()
+    manual_new_card_number = State()
+    manual_new_card_holder = State()
     manual_price_uzs = State()
     manual_vip_days = State()
     manual_vip_plans = State()
@@ -2222,10 +2224,16 @@ async def render_manual_payment_admin(
 ):
     settings = await db.manual_payment_settings()
     status = "✅ Yoqilgan" if settings["enabled"] else "⛔️ O‘chiq"
-    digits = "".join(ch for ch in settings["card_number"] if ch.isdigit())
-    grouped = " ".join(digits[i:i + 4] for i in range(0, len(digits), 4)) or "Kiritilmagan"
-    holder = settings["card_holder"] or "Kiritilmagan"
-    card_type = settings["card_type"] if settings["card_type"] in {"UZCARD", "HUMO", "VISA"} else "UZCARD"
+    cards = list(settings["cards"])
+    card_lines = []
+    for index, card in enumerate(cards, start=1):
+        digits = "".join(ch for ch in card["card_number"] if ch.isdigit())
+        grouped = " ".join(digits[i:i + 4] for i in range(0, len(digits), 4))
+        card_lines.append(
+            f"{index}. <b>{escape(card['card_type'])}</b> · "
+            f"<code>{escape(grouped)}</code> · {escape(card['card_holder'])}"
+        )
+    cards_text = "\n".join(card_lines) or "Hozircha karta qo‘shilmagan."
     plans_text = "\n".join(
         f"• {manual_plan_label(days)} — {format_number(price)} so‘m"
         for days, price in settings["plans"]
@@ -2235,15 +2243,19 @@ async def render_manual_payment_admin(
             text="⛔️ Karta to‘lovini o‘chirish" if settings["enabled"] else "✅ Karta to‘lovini yoqish",
             callback_data="adm:manualtoggle",
         )],
-        [InlineKeyboardButton(text="💳 Karta raqamini o‘zgartirish", callback_data="adm:manualcard")],
-        [InlineKeyboardButton(text="👤 Karta egasini o‘zgartirish", callback_data="adm:manualholder")],
-        [
-            InlineKeyboardButton(text=("✅ " if card_type == "UZCARD" else "") + "UZCARD", callback_data="adm:cardtype:UZCARD"),
-            InlineKeyboardButton(text=("✅ " if card_type == "HUMO" else "") + "HUMO", callback_data="adm:cardtype:HUMO"),
-            InlineKeyboardButton(text=("✅ " if card_type == "VISA" else "") + "VISA", callback_data="adm:cardtype:VISA"),
-        ],
-        [InlineKeyboardButton(text="📦 VIP paketlari va narxlari", callback_data="adm:manualplans")],
     ]
+    for card in cards:
+        digits = "".join(ch for ch in card["card_number"] if ch.isdigit())
+        rows.append([InlineKeyboardButton(
+            text=f"🗑 {card['card_type']} •••• {digits[-4:]} kartani o‘chirish",
+            callback_data=f"adm:carddelask:{card['id']}",
+        )])
+    if len(cards) < 4:
+        rows.append([InlineKeyboardButton(
+            text=f"➕ Yangi karta qo‘shish ({len(cards)}/4)",
+            callback_data="adm:cardadd",
+        )])
+    rows.append([InlineKeyboardButton(text="📦 VIP paketlari va narxlari", callback_data="adm:manualplans")])
     if payment_url:
         rows.append([InlineKeyboardButton(text="🌐 To‘lov sahifasini ochish", url=payment_url)])
     rows.append([InlineKeyboardButton(text="⬅️ VIP boshqaruvi", callback_data="adm:vip")])
@@ -2251,11 +2263,10 @@ async def render_manual_payment_admin(
         call,
         "💳 <b>Karta to‘lov sozlamalari</b>\n\n"
         f"Holati: <b>{status}</b>\n"
-        f"Karta: <code>{escape(grouped)}</code>\n"
-        f"Karta turi: <b>{escape(card_type)}</b>\n"
-        f"Karta egasi: <b>{escape(holder)}</b>\n\n"
+        f"Kartalar: <b>{len(cards)}/4</b>\n\n"
+        f"{cards_text}\n\n"
         f"<b>VIP paketlari:</b>\n{plans_text}\n\n"
-        "Chek kelganda tanlangan paket, summa va foydalanuvchi ID birga ko‘rinadi.",
+        "Mini App’da barcha kartalar alohida premium karta ko‘rinishida chiqadi.",
         InlineKeyboardMarkup(inline_keyboard=rows),
     )
 
@@ -2284,8 +2295,8 @@ async def admin_manual_payment_toggle(
     if not is_admin(call.from_user.id, admin_id):
         return await call.answer("Ruxsat yo‘q.", show_alert=True)
     settings = await db.manual_payment_settings()
-    if not settings["enabled"] and (not settings["card_number"] or not settings["card_holder"]):
-        return await call.answer("Avval karta raqami va karta egasini kiriting.", show_alert=True)
+    if not settings["enabled"] and not settings["cards"]:
+        return await call.answer("Avval kamida bitta karta qo‘shing.", show_alert=True)
     await db.set_setting("manual_payments_enabled", "false" if settings["enabled"] else "true")
     await record_admin_action(db, call.from_user, "💳 Karta to‘lovi holati o‘zgartirildi", "O‘chirildi" if settings["enabled"] else "Yoqildi")
     await render_manual_payment_admin(call, db, payment_url)
@@ -2301,11 +2312,183 @@ async def admin_manual_card_type(
     if not is_admin(call.from_user.id, admin_id):
         return await call.answer("Ruxsat yo‘q.", show_alert=True)
     card_type = (call.data or "").rsplit(":", 1)[-1].upper()
-    if card_type not in {"UZCARD", "HUMO", "VISA"}:
+    if card_type not in {"UZCARD", "HUMO", "VISA", "MASTERCARD"}:
         return await call.answer("Karta turi noto‘g‘ri.", show_alert=True)
     await db.set_setting("manual_card_type", card_type)
     await record_admin_action(db, call.from_user, "💳 Karta turi yangilandi", card_type)
     await call.answer(f"✅ {card_type} tanlandi")
+    await render_manual_payment_admin(call, db, payment_url)
+
+
+@router.callback_query(F.data == "adm:cardadd")
+async def admin_manual_card_add_start(
+    call: CallbackQuery,
+    state: FSMContext,
+    db: Database,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    cards = await db.manual_payment_cards(enabled_only=False)
+    if len(cards) >= 4:
+        return await call.answer("Ko‘pi bilan 4 ta karta saqlanadi.", show_alert=True)
+    await state.clear()
+    await safe_edit(
+        call,
+        "💳 <b>Yangi karta qo‘shish</b>\n\nKarta turini tanlang:",
+        InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="UZCARD", callback_data="adm:cardaddtype:UZCARD"),
+                InlineKeyboardButton(text="HUMO", callback_data="adm:cardaddtype:HUMO"),
+            ],
+            [
+                InlineKeyboardButton(text="VISA", callback_data="adm:cardaddtype:VISA"),
+                InlineKeyboardButton(text="MASTERCARD", callback_data="adm:cardaddtype:MASTERCARD"),
+            ],
+            [InlineKeyboardButton(text="⬅️ Bekor qilish", callback_data="adm:manualpay")],
+        ]),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:cardaddtype:"))
+async def admin_manual_card_add_type(
+    call: CallbackQuery,
+    state: FSMContext,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    card_type = (call.data or "").rsplit(":", 1)[-1].upper()
+    if card_type not in {"UZCARD", "HUMO", "VISA", "MASTERCARD"}:
+        return await call.answer("Karta turi noto‘g‘ri.", show_alert=True)
+    await state.update_data(new_card_type=card_type)
+    await state.set_state(AdminFlow.manual_new_card_number)
+    await safe_edit(
+        call,
+        f"💳 <b>{card_type}</b> karta raqamini yozing.\n\n"
+        "Faqat karta raqami; CVV, muddat yoki SMS kod yubormang.",
+        cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.manual_new_card_number, F.text)
+async def admin_manual_new_card_number(
+    message: Message,
+    state: FSMContext,
+    admin_id: int,
+):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    digits = "".join(ch for ch in message.text if ch.isdigit())
+    if not 16 <= len(digits) <= 19:
+        return await message.answer(
+            "Karta raqamini to‘g‘ri kiriting (16–19 ta raqam).",
+            reply_markup=cancel_kb(),
+        )
+    await state.update_data(new_card_number=digits)
+    await state.set_state(AdminFlow.manual_new_card_holder)
+    await message.answer(
+        "👤 Karta egasining ism-familiyasini yozing:",
+        reply_markup=cancel_kb(),
+    )
+
+
+@router.message(AdminFlow.manual_new_card_holder, F.text)
+async def admin_manual_new_card_holder(
+    message: Message,
+    state: FSMContext,
+    db: Database,
+    admin_id: int,
+):
+    if not is_admin(message.from_user.id, admin_id):
+        return
+    holder = message.text.strip()
+    if not 2 <= len(holder) <= 80:
+        return await message.answer(
+            "Ism-familiya 2–80 ta belgi bo‘lsin.",
+            reply_markup=cancel_kb(),
+        )
+    data = await state.get_data()
+    card_type = str(data.get("new_card_type", "")).upper()
+    card_number = str(data.get("new_card_number", ""))
+    result, card = await db.add_manual_payment_card(card_type, card_number, holder)
+    if result == "limit":
+        await state.clear()
+        return await message.answer(
+            "Ko‘pi bilan 4 ta karta saqlanadi.",
+            reply_markup=manual_payment_back_markup(),
+        )
+    if result == "duplicate":
+        await state.clear()
+        return await message.answer(
+            "Bu karta raqami oldin qo‘shilgan.",
+            reply_markup=manual_payment_back_markup(),
+        )
+    if result != "created":
+        return await message.answer("Karta ma’lumoti noto‘g‘ri.", reply_markup=cancel_kb())
+    await record_admin_action(
+        db,
+        message.from_user,
+        "➕ To‘lov kartasi qo‘shildi",
+        f"{card_type} · •••• {card_number[-4:]}",
+    )
+    await state.clear()
+    await message.answer(
+        f"✅ {card_type} •••• {card_number[-4:]} kartasi saqlandi.",
+        reply_markup=manual_payment_back_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:carddelask:"))
+async def admin_manual_card_delete_confirm(
+    call: CallbackQuery,
+    db: Database,
+    admin_id: int,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    try:
+        card_id = int((call.data or "").rsplit(":", 1)[-1])
+    except ValueError:
+        return await call.answer("Karta topilmadi.", show_alert=True)
+    card = await db.manual_payment_card(card_id, enabled_only=False)
+    if not card:
+        return await call.answer("Karta topilmadi.", show_alert=True)
+    digits = "".join(ch for ch in card["card_number"] if ch.isdigit())
+    await safe_edit(
+        call,
+        f"⚠️ <b>{escape(card['card_type'])} •••• {digits[-4:]}</b> kartasi o‘chirilsinmi?",
+        InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🗑 Ha, o‘chirish", callback_data=f"adm:carddelete:{card_id}")],
+            [InlineKeyboardButton(text="⬅️ Yo‘q, ortga", callback_data="adm:manualpay")],
+        ]),
+    )
+
+
+@router.callback_query(F.data.startswith("adm:carddelete:"))
+async def admin_manual_card_delete(
+    call: CallbackQuery,
+    db: Database,
+    admin_id: int,
+    payment_url: str | None,
+):
+    if not is_admin(call.from_user.id, admin_id):
+        return await call.answer("Ruxsat yo‘q.", show_alert=True)
+    try:
+        card_id = int((call.data or "").rsplit(":", 1)[-1])
+    except ValueError:
+        return await call.answer("Karta topilmadi.", show_alert=True)
+    card = await db.delete_manual_payment_card(card_id)
+    if not card:
+        return await call.answer("Karta oldin o‘chirilgan.", show_alert=True)
+    digits = "".join(ch for ch in card["card_number"] if ch.isdigit())
+    await record_admin_action(
+        db,
+        call.from_user,
+        "🗑 To‘lov kartasi o‘chirildi",
+        f"{card['card_type']} · •••• {digits[-4:]}",
+    )
+    await call.answer("Karta o‘chirildi.")
     await render_manual_payment_admin(call, db, payment_url)
 
 
