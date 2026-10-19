@@ -27,6 +27,7 @@ class Database:
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
             ALTER TABLE movies ADD COLUMN IF NOT EXISTS poster_file_id TEXT;
+            ALTER TABLE movies ADD COLUMN IF NOT EXISTS poster_r2_key TEXT;
             ALTER TABLE movies ADD COLUMN IF NOT EXISTS description TEXT;
             ALTER TABLE movies ADD COLUMN IF NOT EXISTS is_vip BOOLEAN NOT NULL DEFAULT FALSE;
             CREATE UNIQUE INDEX IF NOT EXISTS movies_title_lower_uq ON movies (LOWER(title));
@@ -277,6 +278,17 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS admin_action_history_created_idx
                 ON admin_action_history(created_at DESC);
+            CREATE TABLE IF NOT EXISTS aura_imports (
+                id BIGSERIAL PRIMARY KEY,
+                idempotency_key TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL DEFAULT 'processing',
+                movie_id BIGINT REFERENCES movies(id) ON DELETE SET NULL,
+                episode_id BIGINT REFERENCES episodes(id) ON DELETE SET NULL,
+                error TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS aura_imports_status_idx ON aura_imports(status);
         """)
 
     async def add_movie(self, title: str, emoji: str = "🎬"):
@@ -415,6 +427,12 @@ class Database:
             GROUP BY m.id
         """, movie_id)
 
+    async def movie_by_title(self, title: str):
+        assert self.pool
+        return await self.pool.fetchrow(
+            "SELECT * FROM movies WHERE LOWER(title)=LOWER($1) LIMIT 1", title.strip()
+        )
+
     async def search_movies(self, query: str, limit=20):
         assert self.pool
         return await self.pool.fetch(
@@ -431,6 +449,46 @@ class Database:
         assert self.pool
         return await self.pool.execute(
             "UPDATE movies SET poster_file_id=$2 WHERE id=$1", movie_id, poster_file_id
+        )
+
+    async def set_movie_poster_r2(self, movie_id: int, poster_r2_key: str | None):
+        assert self.pool
+        return await self.pool.execute(
+            "UPDATE movies SET poster_r2_key=$2 WHERE id=$1", movie_id, poster_r2_key
+        )
+
+    async def begin_aura_import(self, idempotency_key: str):
+        assert self.pool
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                existing = await conn.fetchrow(
+                    "SELECT * FROM aura_imports WHERE idempotency_key=$1 FOR UPDATE",
+                    idempotency_key,
+                )
+                if existing:
+                    if existing["status"] == "failed":
+                        return await conn.fetchrow(
+                            "UPDATE aura_imports SET status='processing', error=NULL, updated_at=NOW() WHERE id=$1 RETURNING *",
+                            existing["id"],
+                        )
+                    return existing
+                return await conn.fetchrow(
+                    "INSERT INTO aura_imports(idempotency_key) VALUES($1) RETURNING *",
+                    idempotency_key,
+                )
+
+    async def complete_aura_import(self, import_id: int, movie_id: int, episode_id: int):
+        assert self.pool
+        return await self.pool.execute(
+            "UPDATE aura_imports SET status='published', movie_id=$2, episode_id=$3, error=NULL, updated_at=NOW() WHERE id=$1",
+            import_id, movie_id, episode_id,
+        )
+
+    async def fail_aura_import(self, import_id: int, error: str):
+        assert self.pool
+        return await self.pool.execute(
+            "UPDATE aura_imports SET status='failed', error=$2, updated_at=NOW() WHERE id=$1",
+            import_id, error[:500],
         )
 
     async def set_movie_description(self, movie_id: int, description: str | None):

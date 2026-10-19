@@ -11,6 +11,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 
 from .database import Database
 from .miniapp import register_miniapp_routes
+from .aura_integration import register_aura_routes
 from .speech import AzureSpeechClient
 from .storage import R2Storage
 
@@ -205,6 +206,7 @@ async def start_payment_web(
     app.router.add_get("/health", health_check)
     app.router.add_post("/receipt", receipt_upload)
     register_miniapp_routes(app)
+    register_aura_routes(app)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", int(__import__("os").environ.get("PORT", "8080")))
